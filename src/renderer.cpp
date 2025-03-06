@@ -633,96 +633,20 @@ namespace kvk {
 			imageCount = surfaceCapabilities.maxImageCount;
 		}
 
-		std::vector<std::uint32_t> queueFamilyIndices = {
-			state.graphicsFamilyIndex,
-			state.presentFamilyIndex,
-			state.computeFamilyIndex
-		};
-
-		std::sort(queueFamilyIndices.begin(), queueFamilyIndices.end());
-		queueFamilyIndices.erase(std::unique(queueFamilyIndices.begin(), queueFamilyIndices.end()),
-								 queueFamilyIndices.end());
-
-		if(queueFamilyIndices.size() == 1) {
-			logInfo("Swapchain running in exclusive mode");
-		} else {
-			logInfo("Swapchain running in concurrent mode");
-		}
-
-		VkSwapchainCreateInfoKHR swapchainCreateInfo = {
-			.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-			.surface = state.surface,
-			.minImageCount = imageCount,
-			.imageFormat = chosenFormat.format,
-			.imageColorSpace = chosenFormat.colorSpace,
-			.imageExtent = chosenExtent,
-			.imageArrayLayers = 1,
-			.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-			.imageSharingMode = (queueFamilyIndices.size() == 1 ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT),
-			.queueFamilyIndexCount = static_cast<std::uint32_t>(queueFamilyIndices.size()),
-			.pQueueFamilyIndices = queueFamilyIndices.data(),
-			.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
-			.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-			.presentMode = chosenPresentMode,
-			.clipped = VK_TRUE,
-		};
-		logDebug("graphics: %u", state.graphicsFamilyIndex);
-		logDebug("present : %u", state.presentFamilyIndex);
-		logDebug("compute : %u", state.computeFamilyIndex);
-
-		if(vkCreateSwapchainKHR(state.device,
-							 &swapchainCreateInfo,
-							 nullptr,
-							 &state.swapchain) != VK_SUCCESS) {
+		if(createSwapchain(state,
+						   chosenExtent,
+						   chosenFormat,
+						   chosenPresentMode,
+						   imageCount) != ReturnCode::OK) {
 			logError("Could not create swapchain");
 			return ReturnCode::UNKNOWN;
 		}
-
-		vkGetSwapchainImagesKHR(state.device,
-								state.swapchain,
-								&imageCount,
-								nullptr);
-		state.swapchainImages.resize(imageCount);
-		vkGetSwapchainImagesKHR(state.device,
-								state.swapchain,
-								&imageCount,
-								state.swapchainImages.data());
-
-		state.swapchainImageViews.reserve(imageCount);
-		for(VkImage img : state.swapchainImages) {
-			VkImageViewCreateInfo createInfo = {
-				.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-				.image = img,
-				.viewType = VK_IMAGE_VIEW_TYPE_2D,
-				.format = chosenFormat.format,
-			};
-			createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-			createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-			createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-			createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-			createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			createInfo.subresourceRange.baseMipLevel = 0;
-			createInfo.subresourceRange.levelCount = 1;
-			createInfo.subresourceRange.baseArrayLayer = 0;
-			createInfo.subresourceRange.layerCount = 1;
-			
-			VkImageView imageView;
-			if(vkCreateImageView(state.device,
-								 &createInfo,
-								 nullptr,
-								 &imageView) != VK_SUCCESS) {
-				logError("Could not create image view");
-				return ReturnCode::UNKNOWN;
-			}
-			state.swapchainImageViews.push_back(imageView);
-		}
-
+		
 		VkCommandPoolCreateInfo commandPoolCreateInfo = {
 			.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
 			.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
 			.queueFamilyIndex = state.graphicsFamilyIndex,
 		};
-		
 		if(vkCreateCommandPool(state.device,
 							   &commandPoolCreateInfo,
 							   nullptr,
@@ -838,5 +762,174 @@ namespace kvk {
 		}
 
 		return ReturnCode::OK;
+	}
+
+	ReturnCode createSwapchain(RendererState& state,
+							   VkExtent2D extent,
+							   VkSurfaceFormatKHR format,
+							   VkPresentModeKHR presentMode,
+							   std::uint32_t imageCount) {
+		state.swapchainExtent = extent;
+		state.swapchainImageFormat = format;
+		state.swapchainPresentMode = presentMode;
+		state.swapchainImageCount = imageCount;
+
+		std::vector<std::uint32_t> queueFamilyIndices = {
+			state.graphicsFamilyIndex,
+			state.presentFamilyIndex,
+			state.computeFamilyIndex
+		};
+
+		std::sort(queueFamilyIndices.begin(), queueFamilyIndices.end());
+		queueFamilyIndices.erase(std::unique(queueFamilyIndices.begin(), queueFamilyIndices.end()),
+								 queueFamilyIndices.end());
+
+		if(queueFamilyIndices.size() == 1) {
+			//logInfo("Swapchain running in exclusive mode");
+		} else {
+			//logInfo("Swapchain running in concurrent mode");
+		}
+
+		//logDebug("graphics: %u", state.graphicsFamilyIndex);
+		//logDebug("present : %u", state.presentFamilyIndex);
+		//logDebug("compute : %u", state.computeFamilyIndex);
+
+		VkSwapchainCreateInfoKHR swapchainCreateInfo = {
+			.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+			.surface = state.surface,
+			.minImageCount = imageCount,
+			.imageFormat = format.format,
+			.imageColorSpace = format.colorSpace,
+			.imageExtent = extent,
+			.imageArrayLayers = 1,
+			.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+			.imageSharingMode = (queueFamilyIndices.size() == 1 ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT),
+			.queueFamilyIndexCount = static_cast<std::uint32_t>(queueFamilyIndices.size()),
+			.pQueueFamilyIndices = queueFamilyIndices.data(),
+			.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+			.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+			.presentMode = presentMode,
+			.clipped = VK_TRUE,
+		};
+
+		if(vkCreateSwapchainKHR(state.device,
+							 &swapchainCreateInfo,
+							 nullptr,
+							 &state.swapchain) != VK_SUCCESS) {
+			logError("Could not create swapchain");
+			return ReturnCode::UNKNOWN;
+		}
+
+		vkGetSwapchainImagesKHR(state.device,
+								state.swapchain,
+								&imageCount,
+								nullptr);
+		state.swapchainImages.resize(imageCount);
+		vkGetSwapchainImagesKHR(state.device,
+								state.swapchain,
+								&imageCount,
+								state.swapchainImages.data());
+
+		state.swapchainImageViews.clear();
+		state.swapchainImageViews.reserve(imageCount);
+		for(VkImage img : state.swapchainImages) {
+			VkImageViewCreateInfo createInfo = {
+				.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+				.image = img,
+				.viewType = VK_IMAGE_VIEW_TYPE_2D,
+				.format = format.format,
+			};
+			createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+			createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+			createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+			createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+			createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			createInfo.subresourceRange.baseMipLevel = 0;
+			createInfo.subresourceRange.levelCount = 1;
+			createInfo.subresourceRange.baseArrayLayer = 0;
+			createInfo.subresourceRange.layerCount = 1;
+			
+			VkImageView imageView;
+			if(vkCreateImageView(state.device,
+								 &createInfo,
+								 nullptr,
+								 &imageView) != VK_SUCCESS) {
+				logError("Could not create image view");
+				return ReturnCode::UNKNOWN;
+			}
+			state.swapchainImageViews.push_back(imageView);
+		}
+		return ReturnCode::OK;
+	}
+
+	ReturnCode createFramebuffers(RendererState& state,
+								  Pipeline& pipeline) {
+		state.framebuffers.resize(state.swapchainImages.size());
+
+		for(int i = 0; i != state.swapchainImages.size(); i++) {
+			VkImageView attachments[] = {
+				state.swapchainImageViews[i]
+			};
+			VkFramebufferCreateInfo createInfo = {
+				.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+				.renderPass = pipeline.renderPass,
+				.attachmentCount = 1,
+				.pAttachments = attachments,
+				.width = state.swapchainExtent.width,
+				.height = state.swapchainExtent.height,
+				.layers = 1
+			};
+
+			if(vkCreateFramebuffer(state.device,
+								   &createInfo,
+								   nullptr,
+								   &state.framebuffers[i]) != VK_SUCCESS) {
+				logError("Could not create framebuffers");
+				return ReturnCode::UNKNOWN;
+			}
+		}
+		//logInfo("Created framebuffers");
+
+		return ReturnCode::OK;
+	}
+
+	ReturnCode recreateSwapchain(RendererState& state,
+								 Pipeline& pipeline,
+								 const std::uint32_t x,
+								 const std::uint32_t y) {
+		logInfo("wait idle");
+		vkDeviceWaitIdle(state.device);
+		logInfo("is idle");
+
+		for(VkFramebuffer framebuffer : state.framebuffers) {
+			vkDestroyFramebuffer(state.device,
+								 framebuffer,
+								 nullptr);
+		}
+
+		for(VkImageView imageView : state.swapchainImageViews) {
+			vkDestroyImageView(state.device,
+							   imageView,
+							   nullptr);
+		}
+		vkDestroySwapchainKHR(state.device, 
+							  state.swapchain,
+							  nullptr);
+
+		
+		logInfo("creating swapchain");
+		
+		const VkExtent2D newExtent = { x, y };
+		ReturnCode rc = createSwapchain(state,
+										newExtent,
+										state.swapchainImageFormat,
+										state.swapchainPresentMode,
+										state.swapchainImageCount);
+		if(rc != ReturnCode::OK) {
+			return rc;
+		}
+
+		logInfo("creating framebuffers");
+		return createFramebuffers(state, pipeline);
 	}
 }

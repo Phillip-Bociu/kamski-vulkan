@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <vector>
+#include <atomic>
 #include <vulkan/vulkan.h>
 #include "common.h"
 
@@ -39,6 +40,7 @@ namespace kvk {
 
 	static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 2;
 	struct RendererState {
+		std::atomic<bool> isInitialized;
 		VkInstance instance;
 		VkDevice device;
 		VkPhysicalDevice physicalDevice;
@@ -62,8 +64,10 @@ namespace kvk {
 		// Swapchain stuff
 		//
 		VkSwapchainKHR swapchain;
+		std::uint32_t swapchainImageCount;
 		std::vector<VkImage> swapchainImages;
 		std::vector<VkImageView> swapchainImageViews;
+		std::vector<VkFramebuffer> framebuffers;
 		VkExtent2D swapchainExtent;
 		VkSurfaceFormatKHR swapchainImageFormat;
 		VkPresentModeKHR swapchainPresentMode;
@@ -85,4 +89,18 @@ namespace kvk {
 								   Pipeline& pipeline,
 								   VkFramebuffer framebuffer,
 								   const VkExtent2D& extent);
+	
+	ReturnCode createSwapchain(RendererState& state,
+							   VkExtent2D extent,
+							   VkSurfaceFormatKHR format,
+							   VkPresentModeKHR presentMode,
+							   std::uint32_t imageCount);
+
+	ReturnCode createFramebuffers(RendererState& state,
+								 Pipeline& pipeline);
+
+	ReturnCode recreateSwapchain(RendererState& state,
+								 Pipeline& pipeline,
+								 const std::uint32_t x,
+								 const std::uint32_t y);
 }

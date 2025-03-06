@@ -2,6 +2,12 @@
 #include <cstdint>
 #include <Windows.h>
 #include <thread>
+#include <mutex>
+
+kvk::RendererState state;
+kvk::Pipeline pipeline;
+std::mutex renderThreadMutex;
+std::atomic<bool> allow;
 
 static LRESULT CALLBACK winProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
 
@@ -9,15 +15,28 @@ static LRESULT CALLBACK winProc(HWND window, UINT message, WPARAM wParam, LPARAM
 		case WM_USER: {
 			return 0;
 		} break;
-		case WM_SIZE: {
-			RECT res = {};
-			GetClientRect(window, &res);
-			std::uint32_t x = res.right;
-			std::uint32_t y = res.bottom;
-		} break;
 		case WM_CLOSE: {
 			PostQuitMessage(0);
 			return 0;
+		} break;
+		case WM_SIZE: {
+			if (state.isInitialized.load()) {
+				allow.store(false);
+				std::lock_guard<std::mutex> lck(renderThreadMutex);
+				RECT res = {};
+				GetClientRect(window, &res);
+				logInfo("New viewport: %u %u", res.right, res.bottom);
+				if(kvk::recreateSwapchain(state,
+										  pipeline,
+										  res.right,
+										  res.bottom) != kvk::ReturnCode::OK) {
+					ShowWindow(window, SW_HIDE);
+					ExitProcess(1);
+				}
+				allow.store(true);
+			} else {
+				logInfo("Renderer not yet initialized");
+			}
 		} break;
 	}
 
@@ -61,7 +80,7 @@ int main() {
 	logInfo("Window created");
 
 	std::thread([&]() {
-		kvk::RendererState state;
+		renderThreadMutex.lock();
 		const kvk::InitSettings initSettings = {
 			.appName = "kamki tet",
 			.width = 1600,
@@ -77,7 +96,6 @@ int main() {
 			ExitProcess(0);
 		}
 
-		kvk::Pipeline pipeline;
 		rc = kvk::createPipeline(state,
 								 pipeline,
 								 "shaders/simple_shader.vert.spv",
@@ -88,34 +106,22 @@ int main() {
 			ExitProcess(0);
 		}
 
-		std::vector<VkFramebuffer> framebuffers(state.swapchainImages.size());
-
-		for(int i = 0; i != state.swapchainImages.size(); i++) {
-			VkImageView attachments[] = {
-				state.swapchainImageViews[i]
-			};
-			VkFramebufferCreateInfo createInfo = {
-				.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-				.renderPass = pipeline.renderPass,
-				.attachmentCount = 1,
-				.pAttachments = attachments,
-				.width = state.swapchainExtent.width,
-				.height = state.swapchainExtent.height,
-				.layers = 1
-			};
-
-			if(vkCreateFramebuffer(state.device,
-								   &createInfo,
-								   nullptr,
-								   &framebuffers[i]) != VK_SUCCESS) {
-				logError("Could not create framebuffers");
-				ShowWindow(window, SW_HIDE);
-				ExitProcess(1);
-			}
+		rc = kvk::createFramebuffers(state, pipeline);
+		if(rc != kvk::ReturnCode::OK) {
+			ShowWindow(window, SW_HIDE);
+			logError("create framebuffers did not work: %d", static_cast<int>(rc));
+			ExitProcess(0);
 		}
-		logInfo("Created framebuffers");
+		state.isInitialized.store(true);
 
+		allow.store(true);
+		renderThreadMutex.unlock();
 		while(true) {
+			if(!allow.load()) {
+				continue;
+			}
+			std::lock_guard<std::mutex> lck(renderThreadMutex);
+
 			vkWaitForFences(state.device,
 							1,
 							&state.inFlightFences[currentFrame],
@@ -127,15 +133,27 @@ int main() {
 
 			std::uint32_t imageIndex;
 
-			vkAcquireNextImageKHR(state.device,
-								  state.swapchain,
-								  std::numeric_limits<std::uint64_t>::max(),
-								  state.imageAvailableSemaphores[currentFrame],
-								  VK_NULL_HANDLE,
-								  &imageIndex);
+			VkResult result = vkAcquireNextImageKHR(state.device,
+													state.swapchain,
+													std::numeric_limits<std::uint64_t>::max(),
+													state.imageAvailableSemaphores[currentFrame],
+													VK_NULL_HANDLE,
+													&imageIndex);
+
+			if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+				recreateSwapchain(state,
+								  pipeline,
+								  state.swapchainExtent.width,
+								  state.swapchainExtent.height);
+				continue;
+			} else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+				ShowWindow(window, SW_HIDE);
+				ExitProcess(0);
+			}
+
 			if(recordCommandBuffer(state.commandBuffers[currentFrame],
 								   pipeline,
-								   framebuffers[imageIndex],
+								   state.framebuffers[imageIndex],
 								   state.swapchainExtent) != kvk::ReturnCode::OK) {
 				ShowWindow(window, SW_HIDE);
 				logError("Could not record commandBuffer");
@@ -152,7 +170,6 @@ int main() {
 			VkPipelineStageFlags waitStages[] = {
 				VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
 			};
-
 
 			VkSubmitInfo submitInfo = {
 				.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -184,8 +201,20 @@ int main() {
 				.pResults = nullptr
 			};
 
-			vkQueuePresentKHR(state.presentQueue,
-							  &presentInfo);
+			result = vkQueuePresentKHR(state.presentQueue,
+									   &presentInfo);
+
+			if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+				recreateSwapchain(state,
+								  pipeline,
+								  state.swapchainExtent.width,
+								  state.swapchainExtent.height);
+				continue;
+			} else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+				ShowWindow(window, SW_HIDE);
+				ExitProcess(0);
+			}
+
 			currentFrame = (currentFrame + 1) % kvk::MAX_IN_FLIGHT_FRAMES;
 		}
 	}).detach();

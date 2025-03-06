@@ -205,6 +205,85 @@ namespace kvk {
 			return ReturnCode::UNKNOWN;
 		}
 
+		VkAttachmentDescription colorAttachment = {
+			.format = state.swapchainImageFormat.format,
+			.samples = VK_SAMPLE_COUNT_1_BIT,
+			.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+			.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+			.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+			.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+			.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+		};
+
+		VkAttachmentReference colorRef = {
+			.attachment = 0,
+			.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		};
+
+		VkSubpassDescription subpassDesc = {
+			.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+			.colorAttachmentCount = 1,
+			.pColorAttachments = &colorRef
+		};
+
+		VkSubpassDependency subpassDep = {
+			.srcSubpass = VK_SUBPASS_EXTERNAL,
+			.dstSubpass = 0,
+			.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+			.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+			.srcAccessMask = 0,
+			.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		};
+
+		VkRenderPassCreateInfo renderPassCreateInfo = {
+			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+			.attachmentCount = 1,
+			.pAttachments = &colorAttachment,
+			.subpassCount = 1,
+			.pSubpasses = &subpassDesc,
+			.dependencyCount = 1,
+			.pDependencies = &subpassDep
+		};
+
+		if(vkCreateRenderPass(state.device,
+							  &renderPassCreateInfo,
+							  nullptr,
+							  &pipeline.renderPass) != VK_SUCCESS) {
+			logError("Could not create render pass");
+			return ReturnCode::UNKNOWN;
+		}
+
+		VkGraphicsPipelineCreateInfo createInfo = {
+			.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+			.stageCount = 2,
+			.pStages = shaderStageCreateInfo,
+			.pVertexInputState = &vertexStateCreateInfo,
+			.pInputAssemblyState = &inputAssemblyCreateInfo,
+			.pViewportState = &viewportStateCreateInfo,
+			.pRasterizationState = &rasterCreateInfo,
+			.pMultisampleState = &multisamplingCreateInfo,
+			.pDepthStencilState = nullptr,
+			.pColorBlendState = &blendCreateInfo,
+			.pDynamicState = &dynamicStateCreateInfo,
+			.layout = pipeline.layout,
+			.renderPass = pipeline.renderPass,
+			.subpass = 0,
+			.basePipelineHandle = VK_NULL_HANDLE,
+			.basePipelineIndex = -1,
+		};
+
+		if(vkCreateGraphicsPipelines(state.device,
+									 VK_NULL_HANDLE,
+									 1,
+									 &createInfo,
+									 nullptr,
+									 &pipeline.pipeline) != VK_SUCCESS) {
+			logError("Could not create pipeline");
+			return ReturnCode::UNKNOWN;
+		}
+		logDebug("Created pipeline");
+
 		return ReturnCode::OK;
 	}
 
@@ -248,7 +327,7 @@ namespace kvk {
 			.applicationVersion = VK_MAKE_VERSION(1, 0, 0),
 			.pEngineName = "Kamski",
 			.engineVersion = VK_MAKE_VERSION(1, 0, 0),
-			.apiVersion = VK_API_VERSION_1_4
+			.apiVersion = VK_API_VERSION_1_3
 		};
 
 		/*=====================================
@@ -523,6 +602,7 @@ namespace kvk {
 				break;
 			}
 		}
+		state.swapchainImageFormat = chosenFormat;
 
 		VkPresentModeKHR chosenPresentMode = surfacePresentModes[0];
 		for (const VkPresentModeKHR pm : surfacePresentModes) {
@@ -531,6 +611,7 @@ namespace kvk {
 				break;
 			}
 		}
+		state.swapchainPresentMode = chosenPresentMode;
 
 		VkExtent2D chosenExtent;
 
@@ -635,8 +716,127 @@ namespace kvk {
 			}
 			state.swapchainImageViews.push_back(imageView);
 		}
+
+		VkCommandPoolCreateInfo commandPoolCreateInfo = {
+			.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+			.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+			.queueFamilyIndex = state.graphicsFamilyIndex,
+		};
+		
+		if(vkCreateCommandPool(state.device,
+							   &commandPoolCreateInfo,
+							   nullptr,
+							   &state.commandPool) != VK_SUCCESS) {
+			logError("Could not create command pool");
+			return ReturnCode::UNKNOWN;
+		}
+		logInfo("Created command pool");
+
+		VkCommandBufferAllocateInfo cbufferAllocInfo = {
+			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+			.commandPool = state.commandPool,
+			.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+			.commandBufferCount = MAX_IN_FLIGHT_FRAMES
+		};
+
+		if(vkAllocateCommandBuffers(state.device,
+									&cbufferAllocInfo,
+									state.commandBuffers) != VK_SUCCESS) {
+			logError("Could not allocate cbuffers");
+			return ReturnCode::UNKNOWN;
+		}
+
+		VkSemaphoreCreateInfo semaphoreCreateInfo = {
+			.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+		};
+
+		VkFenceCreateInfo fenceCreateInfo = {
+			.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+			.flags = VK_FENCE_CREATE_SIGNALED_BIT,
+		};
+
+		for(int i = 0; i != MAX_IN_FLIGHT_FRAMES; i++) {
+			if(vkCreateSemaphore(state.device, &semaphoreCreateInfo, nullptr, &state.imageAvailableSemaphores[i]) != VK_SUCCESS || 
+			   vkCreateSemaphore(state.device, &semaphoreCreateInfo, nullptr, &state.renderFinishedSemaphores[i]) != VK_SUCCESS || 
+			   vkCreateFence	(state.device, &fenceCreateInfo    , nullptr, &state.inFlightFences[i])			  != VK_SUCCESS) {
+				logError("Could not create sync objects");
+				return ReturnCode::UNKNOWN;
+			}
+		}
 		return ReturnCode::OK;
 	}
 
+	ReturnCode recordCommandBuffer(VkCommandBuffer commandBuffer,
+								   Pipeline& pipeline,
+								   VkFramebuffer framebuffer,
+								   const VkExtent2D& extent) {
 
+		vkResetCommandBuffer(commandBuffer, 0);
+		VkCommandBufferBeginInfo beginInfo = {
+			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+		};
+
+		if(vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
+			logError("Could not start command buffer recording");
+			return ReturnCode::UNKNOWN;
+		}
+
+		VkClearValue clearColor = {};
+		VkRenderPassBeginInfo renderPassInfo = {
+			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+			.renderPass = pipeline.renderPass,
+			.framebuffer = framebuffer,
+			.renderArea = {
+				.offset = {0, 0},
+				.extent = extent
+			},
+			.clearValueCount = 1,
+			.pClearValues = &clearColor,
+		};
+
+		vkCmdBeginRenderPass(commandBuffer,
+							 &renderPassInfo,
+							 VK_SUBPASS_CONTENTS_INLINE);
+
+		vkCmdBindPipeline(commandBuffer,
+						  VK_PIPELINE_BIND_POINT_GRAPHICS,
+						  pipeline.pipeline);
+
+		VkViewport viewport = {
+			.width = static_cast<float>(extent.width),
+			.height = static_cast<float>(extent.height),
+			.minDepth = 0.0f,
+			.maxDepth = 1.0f,
+		};
+
+		vkCmdSetViewport(commandBuffer,
+						 0,
+						 1,
+						 &viewport);
+
+		VkRect2D scissor = {
+			.offset = {0, 0},
+			.extent = extent,
+		};
+
+		vkCmdSetScissor(commandBuffer, 
+						0,
+						1,
+						&scissor);
+
+		vkCmdDraw(commandBuffer,
+				  3,
+				  1,
+				  0,
+				  0);
+
+		vkCmdEndRenderPass(commandBuffer);
+
+		if(vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
+			logError("Could not end command buffer");
+			return ReturnCode::UNKNOWN;
+		}
+
+		return ReturnCode::OK;
+	}
 }

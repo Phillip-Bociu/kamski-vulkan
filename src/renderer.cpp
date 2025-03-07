@@ -1,5 +1,7 @@
-#include "renderer.h"
 #include "common.h"
+#include "renderer.h"
+#include "utils.h"
+
 #include <fstream>
 #include <vector>
 #include <set>
@@ -556,17 +558,39 @@ namespace kvk {
 			queueCreateInfos.push_back(queueCreateInfo);
 		}
 
-
-		VkPhysicalDeviceFeatures deviceFeatures = {
+		VkPhysicalDeviceVulkan13Features features13 = {
+			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+		};
+		
+		VkPhysicalDeviceFeatures2 allDeviceFeatures = {
+			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+			.pNext = &features13
 		};
 
+		vkGetPhysicalDeviceFeatures2(state.physicalDevice,
+									 &allDeviceFeatures);
+
+		if(!features13.synchronization2) {
+			logInfo("Sync2 is not available");
+			return ReturnCode::UNKNOWN;
+		}
+
+		features13 = VkPhysicalDeviceVulkan13Features {
+			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+			.synchronization2 = VK_TRUE
+		};
+		allDeviceFeatures = VkPhysicalDeviceFeatures2 {
+			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+			.pNext = &features13
+		};
+		
 		VkDeviceCreateInfo deviceCreateInfo = {
 			.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+			.pNext = &allDeviceFeatures,
 			.queueCreateInfoCount = static_cast<std::uint32_t>(queueCreateInfos.size()),
 			.pQueueCreateInfos = queueCreateInfos.data(),
 			.enabledExtensionCount = sizeof(desiredDeviceExtensions) / sizeof(desiredDeviceExtensions[0]),
 			.ppEnabledExtensionNames = desiredDeviceExtensions,
-			.pEnabledFeatures = &deviceFeatures,
 		};
 
 		if(vkCreateDevice(state.physicalDevice, &deviceCreateInfo, nullptr, &state.device) != VK_SUCCESS) {
@@ -641,6 +665,7 @@ namespace kvk {
 			logError("Could not create swapchain");
 			return ReturnCode::UNKNOWN;
 		}
+		logInfo("Created swapchain");
 		
 		VkCommandPoolCreateInfo commandPoolCreateInfo = {
 			.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -709,7 +734,8 @@ namespace kvk {
 	ReturnCode recordCommandBuffer(VkCommandBuffer commandBuffer,
 								   Pipeline& pipeline,
 								   VkFramebuffer framebuffer,
-								   const VkExtent2D& extent) {
+								   const VkExtent2D& extent,
+								   VkImage image) {
 
 		vkResetCommandBuffer(commandBuffer, 0);
 		VkCommandBufferBeginInfo beginInfo = {
@@ -721,26 +747,12 @@ namespace kvk {
 			return ReturnCode::UNKNOWN;
 		}
 
-		VkClearValue clearColor = {1.0f, 0.0f, 0.0f, 1.0};
-		VkRenderPassBeginInfo renderPassInfo = {
-			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-			.renderPass = pipeline.renderPass,
-			.framebuffer = framebuffer,
-			.renderArea = {
-				.offset = {0, 0},
-				.extent = extent
-			},
-			.clearValueCount = 1,
-			.pClearValues = &clearColor,
-		};
+		transitionImage(commandBuffer,
+						image,
+						VK_IMAGE_LAYOUT_UNDEFINED,
+						VK_IMAGE_LAYOUT_GENERAL);
 
-		vkCmdBeginRenderPass(commandBuffer,
-							 &renderPassInfo,
-							 VK_SUBPASS_CONTENTS_INLINE);
-
-		vkCmdBindPipeline(commandBuffer,
-						  VK_PIPELINE_BIND_POINT_GRAPHICS,
-						  pipeline.pipeline);
+		VkClearColorValue clearColor = {1.0f, 0.0f, 0.0f, 1.0};
 
 		VkViewport viewport = {
 			.width = static_cast<float>(extent.width),
@@ -764,13 +776,19 @@ namespace kvk {
 						1,
 						&scissor);
 
-		vkCmdDraw(commandBuffer,
-				  3,
-				  1,
-				  0,
-				  0);
+		VkImageSubresourceRange clearRange = imageSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT);
 
-		vkCmdEndRenderPass(commandBuffer);
+		vkCmdClearColorImage(commandBuffer,
+							 image,
+							 VK_IMAGE_LAYOUT_GENERAL,
+							 &clearColor,
+							 1,
+							 &clearRange);
+
+		transitionImage(commandBuffer,
+						image,
+						VK_IMAGE_LAYOUT_GENERAL,
+						VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
 		if(vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
 			logError("Could not end command buffer");
@@ -814,7 +832,7 @@ namespace kvk {
 			.imageColorSpace = format.colorSpace,
 			.imageExtent = extent,
 			.imageArrayLayers = 1,
-			.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+			.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
 			.imageSharingMode = (queueFamilyIndices.size() == 1 ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT),
 			.queueFamilyIndexCount = static_cast<std::uint32_t>(queueFamilyIndices.size()),
 			.pQueueFamilyIndices = queueFamilyIndices.data(),

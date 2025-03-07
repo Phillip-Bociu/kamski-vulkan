@@ -159,7 +159,8 @@ int main() {
 			if(recordCommandBuffer(frame.commandBuffer,
 								   pipeline,
 								   state.framebuffers[imageIndex],
-								   state.swapchainExtent) != kvk::ReturnCode::OK) {
+								   state.swapchainExtent,
+								   state.swapchainImages[imageIndex]) != kvk::ReturnCode::OK) {
 				ShowWindow(window, SW_HIDE);
 				logError("Could not record commandBuffer");
 				ExitProcess(0);

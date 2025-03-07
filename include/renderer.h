@@ -44,6 +44,14 @@ namespace kvk {
 		VkPipeline pipeline;
 	};
 
+	struct AllocatedImage {
+		VkImage image;
+		VkImageView view;
+		VmaAllocation allocation;
+		VkExtent3D extent;
+		VkFormat format;
+	};
+
 	struct FrameData {
 		VkFence inFlightFence;
 		VkCommandBuffer commandBuffer;
@@ -105,7 +113,8 @@ namespace kvk {
 	ReturnCode recordCommandBuffer(VkCommandBuffer commandBuffer,
 								   Pipeline& pipeline,
 								   VkFramebuffer framebuffer,
-								   const VkExtent2D& extent);
+								   const VkExtent2D& extent,
+								   VkImage image);
 	
 	ReturnCode createSwapchain(RendererState& state,
 							   VkExtent2D extent,

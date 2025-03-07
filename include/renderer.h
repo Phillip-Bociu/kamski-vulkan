@@ -84,6 +84,7 @@ namespace kvk {
 		VkSurfaceKHR surface;
 
 		FrameData frames[MAX_IN_FLIGHT_FRAMES];
+		AllocatedImage drawImage;
 
 		//
 		// Swapchain stuff

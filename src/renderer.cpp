@@ -614,6 +614,21 @@ namespace kvk {
 						 0,
 						 &state.computeQueue);
 
+		/*=====================================
+					Vma initialization
+		  =====================================*/
+
+		VmaAllocatorCreateInfo vmaCreateInfo = {
+			.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+			.physicalDevice = state.physicalDevice,
+			.device = state.device,
+			.instance = state.instance,
+		};
+		
+		vmaCreateAllocator(&vmaCreateInfo,
+						   &state.allocator);
+
+
 
 		/*=====================================
 					Swapchain creation
@@ -719,15 +734,6 @@ namespace kvk {
 			}
 		}
 
-		VmaAllocatorCreateInfo vmaCreateInfo = {
-			.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
-			.physicalDevice = state.physicalDevice,
-			.device = state.device,
-			.instance = state.instance,
-		};
-		
-		vmaCreateAllocator(&vmaCreateInfo,
-						   &state.allocator);
 		return ReturnCode::OK;
 	}
 
@@ -888,6 +894,47 @@ namespace kvk {
 				return ReturnCode::UNKNOWN;
 			}
 			state.swapchainImageViews.push_back(imageView);
+		}
+
+		VkExtent3D drawImageExtent = {
+			extent.width,
+			extent.height,
+			1
+		};
+
+		state.drawImage.format = format.format;
+		state.drawImage.extent = drawImageExtent;
+		VkImageUsageFlags drawImageUsage = 
+			VK_IMAGE_USAGE_TRANSFER_DST_BIT | 
+			VK_IMAGE_USAGE_TRANSFER_SRC_BIT | 
+			VK_IMAGE_USAGE_STORAGE_BIT | 
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+		VkImageCreateInfo drawImageCreateInfo = imageCreateInfo(format.format,
+																drawImageUsage,
+																drawImageExtent);
+
+		VmaAllocationCreateInfo drawImageAllocInfo = {
+			.usage = VMA_MEMORY_USAGE_GPU_ONLY,
+			.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		};
+
+		vmaCreateImage(state.allocator,
+					   &drawImageCreateInfo,
+					   &drawImageAllocInfo,
+					   &state.drawImage.image,
+					   &state.drawImage.allocation,
+					   nullptr);
+
+		VkImageViewCreateInfo drawImageViewInfo = imageViewCreateInfo(format.format,
+																	  state.drawImage.image,
+																	  VK_IMAGE_ASPECT_COLOR_BIT);
+		if(vkCreateImageView(state.device,
+							 &drawImageViewInfo,
+							 nullptr,
+							 &state.drawImage.view) != VK_SUCCESS) {
+			logError("Could not create draw image");
+			return ReturnCode::UNKNOWN;
 		}
 		return ReturnCode::OK;
 	}

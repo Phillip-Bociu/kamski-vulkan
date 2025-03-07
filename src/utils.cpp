@@ -78,4 +78,50 @@ namespace kvk {
 		};
 	}
 
+	void blitImageToImage(VkCommandBuffer cmd,
+						  VkImage src,
+						  VkImage dst,
+						  VkExtent2D srcExtent,
+						  VkExtent2D dstExtent) {
+
+		VkImageBlit2 blitRegion = {
+			.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2,
+
+			.srcSubresource = {
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.mipLevel = 0,
+				.baseArrayLayer = 0,
+				.layerCount = 1,
+			},
+
+			.dstSubresource =  {
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.mipLevel = 0,
+				.baseArrayLayer = 0,
+				.layerCount = 1,
+			},
+		};
+
+		blitRegion.srcOffsets[1].x = srcExtent.width;
+		blitRegion.srcOffsets[1].y = srcExtent.height;
+		blitRegion.srcOffsets[1].z = 1;
+
+		blitRegion.dstOffsets[1].x = dstExtent.width;
+		blitRegion.dstOffsets[1].y = dstExtent.height;
+		blitRegion.dstOffsets[1].z = 1;
+
+
+		VkBlitImageInfo2 blitInfo = {
+			.sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2,
+			.srcImage = src,
+			.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			.dstImage = dst,
+			.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			.regionCount = 1,
+			.pRegions = &blitRegion,
+			.filter = VK_FILTER_LINEAR,
+		};
+		vkCmdBlitImage2(cmd, &blitInfo);
+	}
+
 }

@@ -695,10 +695,10 @@ namespace kvk {
 		}
 
 		VmaAllocatorCreateInfo vmaCreateInfo = {
+			.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
 			.physicalDevice = state.physicalDevice,
 			.device = state.device,
 			.instance = state.instance,
-			.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
 		};
 		
 		vmaCreateAllocator(&vmaCreateInfo,

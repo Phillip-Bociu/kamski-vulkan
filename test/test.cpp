@@ -65,7 +65,7 @@ int main() {
 	// Creating actual window
 	HWND window = CreateWindowExA(0,
 								  winClass.lpszClassName,
-								  "Vulkan triangle bitch",
+								  "Vulkan triangle",
 								  WS_OVERLAPPEDWINDOW,
 								  CW_USEDEFAULT,
 								  CW_USEDEFAULT,

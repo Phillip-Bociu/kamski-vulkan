@@ -120,18 +120,28 @@ int main() {
 				continue;
 			}
 			std::lock_guard<std::mutex> lck(renderThreadMutex);
+			if(!state.swapchainExtent.width || !state.swapchainExtent.height) {
+				continue;
+			}
+			kvk::FrameData& frame = state.frames[currentFrame];
 
 			vkWaitForFences(state.device,
 							1,
-							&state.inFlightFences[currentFrame],
+							&frame.inFlightFence,
 							VK_TRUE,
 							std::numeric_limits<std::uint64_t>::max());
 			std::uint32_t imageIndex;
 
+			for(auto iter = frame.deletionQueue.rbegin(); iter != frame.deletionQueue.rend(); ++iter) {
+				iter->deleteFunc(iter->vkHandle);
+			}
+			frame.deletionQueue.clear(); 
+
+
 			VkResult result = vkAcquireNextImageKHR(state.device,
 													state.swapchain,
 													std::numeric_limits<std::uint64_t>::max(),
-													state.imageAvailableSemaphores[currentFrame],
+													frame.imageAvailableSemaphore,
 													VK_NULL_HANDLE,
 													&imageIndex);
 
@@ -144,9 +154,9 @@ int main() {
 
 			vkResetFences(state.device,
 						  1,
-						  &state.inFlightFences[currentFrame]);
+						  &frame.inFlightFence);
 
-			if(recordCommandBuffer(state.commandBuffers[currentFrame],
+			if(recordCommandBuffer(frame.commandBuffer,
 								   pipeline,
 								   state.framebuffers[imageIndex],
 								   state.swapchainExtent) != kvk::ReturnCode::OK) {
@@ -156,11 +166,11 @@ int main() {
 			}
 
 			VkSemaphore waitSemaphores[] = {
-				state.imageAvailableSemaphores[currentFrame]
+				frame.imageAvailableSemaphore
 			};
 
 			VkSemaphore signalSemaphores[] = {
-				state.renderFinishedSemaphores[currentFrame]
+				frame.renderFinishedSemaphore
 			};
 			VkPipelineStageFlags waitStages[] = {
 				VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
@@ -172,7 +182,7 @@ int main() {
 				.pWaitSemaphores = waitSemaphores,
 				.pWaitDstStageMask = waitStages,
 				.commandBufferCount = 1,
-				.pCommandBuffers = &state.commandBuffers[currentFrame],
+				.pCommandBuffers = &frame.commandBuffer,
 				.signalSemaphoreCount = 1,
 				.pSignalSemaphores = signalSemaphores
 			};
@@ -180,7 +190,7 @@ int main() {
 			if(vkQueueSubmit(state.graphicsQueue,
 							 1,
 							 &submitInfo,
-							 state.inFlightFences[currentFrame]) != VK_SUCCESS) {
+							 frame.inFlightFence) != VK_SUCCESS) {
 				ShowWindow(window, SW_HIDE);
 				logError("Queue submit failed");
 				ExitProcess(0);
@@ -206,10 +216,6 @@ int main() {
 				ExitProcess(0);
 			}
 				
-			for(auto iter = state.frameDeletionQueue.rbegin(); iter != state.frameDeletionQueue.rend(); ++iter) {
-				iter->deleteFunc(iter->vkHandle);
-			}
-			state.frameDeletionQueue.clear(); 
 			currentFrame = (currentFrame + 1) % kvk::MAX_IN_FLIGHT_FRAMES;
 		}
 	}).detach();

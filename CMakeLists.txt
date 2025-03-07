@@ -27,6 +27,8 @@ ELSE(KVK_DEBUG MATCHES ON)
 
 ENDIF(KVK_DEBUG MATCHES ON)
 
+add_subdirectory(vma)
+
 # Globs
 
 file(GLOB_RECURSE LIB_CPP_FILES "src/*cpp")
@@ -40,7 +42,7 @@ file(GLOB_RECURSE GLSL_SOURCE_FILES
 
 add_library(kamskiVk STATIC ${LIB_CPP_FILES})
 target_link_directories(kamskiVk PUBLIC $ENV{VULKAN_SDK}/Lib/)
-target_link_libraries(kamskiVk PUBLIC vulkan-1)
+target_link_libraries(kamskiVk PUBLIC vulkan-1 VulkanMemoryAllocator)
 target_include_directories(kamskiVk PUBLIC ${CMAKE_SOURCE_DIR}/include/ $ENV{VULKAN_SDK}/Include/)
 
 # SPIR-V compilation

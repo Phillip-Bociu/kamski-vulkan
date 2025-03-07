@@ -663,11 +663,17 @@ namespace kvk {
 			.commandBufferCount = MAX_IN_FLIGHT_FRAMES
 		};
 
+		VkCommandBuffer cBuffers[MAX_IN_FLIGHT_FRAMES];
+
 		if(vkAllocateCommandBuffers(state.device,
 									&cbufferAllocInfo,
-									state.commandBuffers) != VK_SUCCESS) {
+									cBuffers) != VK_SUCCESS) {
 			logError("Could not allocate cbuffers");
 			return ReturnCode::UNKNOWN;
+		}
+
+		for(int i = 0; i != MAX_IN_FLIGHT_FRAMES; i++) {
+			state.frames[i].commandBuffer = cBuffers[i];
 		}
 
 		VkSemaphoreCreateInfo semaphoreCreateInfo = {
@@ -680,13 +686,23 @@ namespace kvk {
 		};
 
 		for(int i = 0; i != MAX_IN_FLIGHT_FRAMES; i++) {
-			if(vkCreateSemaphore(state.device, &semaphoreCreateInfo, nullptr, &state.imageAvailableSemaphores[i]) != VK_SUCCESS || 
-			   vkCreateSemaphore(state.device, &semaphoreCreateInfo, nullptr, &state.renderFinishedSemaphores[i]) != VK_SUCCESS || 
-			   vkCreateFence	(state.device, &fenceCreateInfo    , nullptr, &state.inFlightFences[i])			  != VK_SUCCESS) {
+			if(vkCreateSemaphore(state.device, &semaphoreCreateInfo, nullptr, &state.frames[i].imageAvailableSemaphore) != VK_SUCCESS || 
+			   vkCreateSemaphore(state.device, &semaphoreCreateInfo, nullptr, &state.frames[i].renderFinishedSemaphore) != VK_SUCCESS || 
+			   vkCreateFence	(state.device, &fenceCreateInfo    , nullptr, &state.frames[i].inFlightFence)			  != VK_SUCCESS) {
 				logError("Could not create sync objects");
 				return ReturnCode::UNKNOWN;
 			}
 		}
+
+		VmaAllocatorCreateInfo vmaCreateInfo = {
+			.physicalDevice = state.physicalDevice,
+			.device = state.device,
+			.instance = state.instance,
+			.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+		};
+		
+		vmaCreateAllocator(&vmaCreateInfo,
+						   &state.allocator);
 		return ReturnCode::OK;
 	}
 

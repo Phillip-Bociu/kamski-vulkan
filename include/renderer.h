@@ -8,6 +8,7 @@
 #include <vector>
 #include <atomic>
 #include <vulkan/vulkan.h>
+#include <vk_mem_alloc.h>
 #include "common.h"
 
 #if defined(_WIN32)
@@ -43,12 +44,21 @@ namespace kvk {
 		VkPipeline pipeline;
 	};
 
+	struct FrameData {
+		VkFence inFlightFence;
+		VkCommandBuffer commandBuffer;
+		VkSemaphore imageAvailableSemaphore;
+		VkSemaphore renderFinishedSemaphore;
+
+		std::vector<Deletion> deletionQueue;
+	};
+
 	static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 2;
 	struct RendererState {
 		std::atomic<bool> isInitialized;
-
-		std::vector<Deletion> frameDeletionQueue;
 		std::vector<Deletion> mainDeletionQueue;
+
+		VmaAllocator allocator;
 
 		VkInstance instance;
 		VkDevice device;
@@ -58,16 +68,14 @@ namespace kvk {
 		std::uint32_t computeFamilyIndex;
 
 		VkCommandPool commandPool;
-		VkCommandBuffer commandBuffers[MAX_IN_FLIGHT_FRAMES];
 		
 		VkQueue graphicsQueue;
 		VkQueue presentQueue;
 		VkQueue computeQueue;
 
 		VkSurfaceKHR surface;
-		VkFence inFlightFences[MAX_IN_FLIGHT_FRAMES];
-		VkSemaphore imageAvailableSemaphores[MAX_IN_FLIGHT_FRAMES];
-		VkSemaphore renderFinishedSemaphores[MAX_IN_FLIGHT_FRAMES];
+
+		FrameData frames[MAX_IN_FLIGHT_FRAMES];
 
 		//
 		// Swapchain stuff

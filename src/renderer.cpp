@@ -615,7 +615,7 @@ namespace kvk {
 
 		VkExtent2D chosenExtent;
 
-		if(surfaceCapabilities.currentExtent.width != std::numeric_limits<std::uint32_t>::max()) { 
+		if(surfaceCapabilities.currentExtent.width != std::numeric_limits<std::uint32_t>::max()) {
 			chosenExtent = surfaceCapabilities.currentExtent;
 		} else {
 			chosenExtent = {
@@ -705,7 +705,7 @@ namespace kvk {
 			return ReturnCode::UNKNOWN;
 		}
 
-		VkClearValue clearColor = {};
+		VkClearValue clearColor = {1.0f, 0.0f, 0.0f, 1.0};
 		VkRenderPassBeginInfo renderPassInfo = {
 			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
 			.renderPass = pipeline.renderPass,
@@ -789,10 +789,6 @@ namespace kvk {
 		} else {
 			//logInfo("Swapchain running in concurrent mode");
 		}
-
-		//logDebug("graphics: %u", state.graphicsFamilyIndex);
-		//logDebug("present : %u", state.presentFamilyIndex);
-		//logDebug("compute : %u", state.computeFamilyIndex);
 
 		VkSwapchainCreateInfoKHR swapchainCreateInfo = {
 			.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
@@ -897,9 +893,12 @@ namespace kvk {
 								 Pipeline& pipeline,
 								 const std::uint32_t x,
 								 const std::uint32_t y) {
-		logInfo("wait idle");
 		vkDeviceWaitIdle(state.device);
-		logInfo("is idle");
+		if(x == 0 || y == 0) {
+			state.swapchainExtent.width = x;
+			state.swapchainExtent.height = y;
+			return ReturnCode::OK;
+		}
 
 		for(VkFramebuffer framebuffer : state.framebuffers) {
 			vkDestroyFramebuffer(state.device,
@@ -915,13 +914,20 @@ namespace kvk {
 		vkDestroySwapchainKHR(state.device, 
 							  state.swapchain,
 							  nullptr);
-
 		
-		logInfo("creating swapchain");
-		
-		const VkExtent2D newExtent = { x, y };
+		VkExtent2D chosenExtent;
+		VkSurfaceCapabilitiesKHR surfaceCapabilities;
+		vkGetPhysicalDeviceSurfaceCapabilitiesKHR(state.physicalDevice,
+												  state.surface,
+												  &surfaceCapabilities);
+		if(surfaceCapabilities.currentExtent.width != std::numeric_limits<std::uint32_t>::max()) {
+			chosenExtent = surfaceCapabilities.currentExtent;
+		} else {
+			chosenExtent.width = std::clamp(x, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
+			chosenExtent.height = std::clamp(y, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
+		}
 		ReturnCode rc = createSwapchain(state,
-										newExtent,
+										chosenExtent,
 										state.swapchainImageFormat,
 										state.swapchainPresentMode,
 										state.swapchainImageCount);
@@ -929,7 +935,6 @@ namespace kvk {
 			return rc;
 		}
 
-		logInfo("creating framebuffers");
 		return createFramebuffers(state, pipeline);
 	}
 }

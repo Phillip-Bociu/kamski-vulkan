@@ -28,6 +28,11 @@ namespace kvk {
 #endif
 	};
 
+	struct Deletion {
+		void(*deleteFunc)(void* handle);
+		void* vkHandle;
+	};
+
 	struct Pipeline {
 		VkShaderModule vertexShader;
 		VkShaderModule fragmentShader;
@@ -41,6 +46,10 @@ namespace kvk {
 	static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 2;
 	struct RendererState {
 		std::atomic<bool> isInitialized;
+
+		std::vector<Deletion> frameDeletionQueue;
+		std::vector<Deletion> mainDeletionQueue;
+
 		VkInstance instance;
 		VkDevice device;
 		VkPhysicalDevice physicalDevice;

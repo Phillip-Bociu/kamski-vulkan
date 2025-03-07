@@ -25,7 +25,6 @@ static LRESULT CALLBACK winProc(HWND window, UINT message, WPARAM wParam, LPARAM
 				std::lock_guard<std::mutex> lck(renderThreadMutex);
 				RECT res = {};
 				GetClientRect(window, &res);
-				logInfo("New viewport: %u %u", res.right, res.bottom);
 				if(kvk::recreateSwapchain(state,
 										  pipeline,
 										  res.right,
@@ -66,7 +65,7 @@ int main() {
 	// Creating actual window
 	HWND window = CreateWindowExA(0,
 								  winClass.lpszClassName,
-								  "Hopaaaaaa",
+								  "Vulkan triangle bitch",
 								  WS_OVERLAPPEDWINDOW,
 								  CW_USEDEFAULT,
 								  CW_USEDEFAULT,
@@ -76,8 +75,8 @@ int main() {
 								  NULL,
 								  instance,
 								  NULL);
-	ShowWindow(window, SW_SHOW);
 	logInfo("Window created");
+	ShowWindow(window, SW_SHOW);
 
 	std::thread([&]() {
 		renderThreadMutex.lock();
@@ -117,7 +116,7 @@ int main() {
 		allow.store(true);
 		renderThreadMutex.unlock();
 		while(true) {
-			if(!allow.load()) {
+			if(!allow.load() || !state.swapchainExtent.width || !state.swapchainExtent.height) {
 				continue;
 			}
 			std::lock_guard<std::mutex> lck(renderThreadMutex);
@@ -127,10 +126,6 @@ int main() {
 							&state.inFlightFences[currentFrame],
 							VK_TRUE,
 							std::numeric_limits<std::uint64_t>::max());
-			vkResetFences(state.device,
-						  1,
-						  &state.inFlightFences[currentFrame]);
-
 			std::uint32_t imageIndex;
 
 			VkResult result = vkAcquireNextImageKHR(state.device,
@@ -141,15 +136,15 @@ int main() {
 													&imageIndex);
 
 			if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-				recreateSwapchain(state,
-								  pipeline,
-								  state.swapchainExtent.width,
-								  state.swapchainExtent.height);
 				continue;
 			} else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
 				ShowWindow(window, SW_HIDE);
 				ExitProcess(0);
 			}
+
+			vkResetFences(state.device,
+						  1,
+						  &state.inFlightFences[currentFrame]);
 
 			if(recordCommandBuffer(state.commandBuffers[currentFrame],
 								   pipeline,
@@ -205,16 +200,16 @@ int main() {
 									   &presentInfo);
 
 			if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-				recreateSwapchain(state,
-								  pipeline,
-								  state.swapchainExtent.width,
-								  state.swapchainExtent.height);
 				continue;
 			} else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
 				ShowWindow(window, SW_HIDE);
 				ExitProcess(0);
 			}
-
+				
+			for(auto iter = state.frameDeletionQueue.rbegin(); iter != state.frameDeletionQueue.rend(); ++iter) {
+				iter->deleteFunc(iter->vkHandle);
+			}
+			state.frameDeletionQueue.clear(); 
 			currentFrame = (currentFrame + 1) % kvk::MAX_IN_FLIGHT_FRAMES;
 		}
 	}).detach();

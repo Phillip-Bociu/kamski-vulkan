@@ -1,6 +1,88 @@
 #include "utils.h"
 
 namespace kvk {
+	VkDescriptorSetLayoutBinding descriptorSetLayoutBinding(std::uint32_t binding,
+															VkDescriptorType type) {
+		return {
+			.binding = binding,
+			.descriptorType = type,
+			.descriptorCount = 1,
+		};
+	}
+
+	ReturnCode createDescriptorSetLayout(VkDescriptorSetLayout& setLayout,
+										 VkDevice device,
+										 VkShaderStageFlags shaderFlags,
+										 VkDescriptorSetLayoutBinding* bindings,
+										 std::uint32_t bindingCount,
+										 VkDescriptorSetLayoutCreateFlags flags) {
+		for(std::uint32_t index = 0; index != bindingCount; index++) {
+			bindings[index].stageFlags |= shaderFlags;
+		}
+
+		VkDescriptorSetLayoutCreateInfo createInfo = {
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+			.flags = flags,
+			.bindingCount = bindingCount,
+			.pBindings = bindings,
+		};
+
+		if(vkCreateDescriptorSetLayout(device,
+									   &createInfo,
+									   nullptr,
+									   &setLayout) != VK_SUCCESS) {
+			logError("Could not create descriptor set layout");
+			return ReturnCode::UNKNOWN;
+		}
+		return ReturnCode::OK;
+	}
+
+	ReturnCode createDescriptorPool(VkDescriptorPool& pool,
+									VkDevice device,
+									VkDescriptorPoolSize* sizes,
+									const std::uint32_t sizeCount) {
+		std::uint32_t maxSets = 0;
+		for(std::uint32_t i = 0; i != sizeCount; i++) {
+			maxSets += sizes[i].descriptorCount;
+		}
+
+		VkDescriptorPoolCreateInfo info = {
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+			.maxSets = maxSets,
+			.poolSizeCount = sizeCount,
+			.pPoolSizes = sizes,
+		};
+
+		if(vkCreateDescriptorPool(device,
+								  &info,
+								  nullptr,
+								  &pool) != VK_SUCCESS) {
+			logError("Could not create descriptor pool");
+			return ReturnCode::UNKNOWN;
+		}
+		return ReturnCode::OK;
+	}
+
+	ReturnCode allocateDescriptorSet(VkDescriptorSet& set,
+									 VkDescriptorPool pool,
+									 VkDevice device,
+									 VkDescriptorSetLayout layout) {
+		VkDescriptorSetAllocateInfo allocInfo = {
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+			.descriptorPool = pool,
+			.descriptorSetCount = 1,
+			.pSetLayouts = &layout,
+		};
+
+		if(vkAllocateDescriptorSets(device,
+									&allocInfo,
+									&set) != VK_SUCCESS) {
+			logError("Could not allocate descriptor sets");
+			return ReturnCode::UNKNOWN;
+		}
+		return ReturnCode::OK;
+	}
+
 
 	VkImageSubresourceRange imageSubresourceRange(VkImageAspectFlags aspectMask) {
 		VkImageSubresourceRange retval = {
@@ -42,9 +124,47 @@ namespace kvk {
 		vkCmdPipelineBarrier2(cmd, &depInfo);
 	}
 
-	VkImageCreateInfo imageCreateInfo(VkFormat format,
+	VkImageCreateInfo imageCreateInfo(VkPhysicalDevice physicalDevice,
+									  VkFormat format,
 									  VkImageUsageFlags usageFlags,
 									  VkExtent3D extent) {
+		VkPhysicalDeviceImageFormatInfo2 imageFormatInfo = {
+			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2,
+			.format = format,
+			.type = VK_IMAGE_TYPE_2D,
+			.tiling = VK_IMAGE_TILING_OPTIMAL,
+			.usage = usageFlags,
+		};
+		VkImageFormatProperties2 props {
+			.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2,
+			.imageFormatProperties = {
+				
+			},
+		};
+
+		VkResult result = vkGetPhysicalDeviceImageFormatProperties2(physicalDevice,
+																	&imageFormatInfo,
+																	&props);
+		if(result != VK_SUCCESS) {
+			logError("What on earth nigga :%d", static_cast<int>(result));
+		}
+
+		if(props.imageFormatProperties.maxMipLevels == 0) {
+			logError("What the fuck 1");
+		}
+
+		if(props.imageFormatProperties.maxArrayLayers == 0) {
+			logError("What the fuck 2");
+		}
+
+		if(props.imageFormatProperties.maxExtent.width == 0 || props.imageFormatProperties.maxExtent.height == 0) {
+			logError("What the fuck 3");
+		}
+
+		if(props.imageFormatProperties.sampleCounts == 0) {
+			logError("What the fuck 4");
+		}
+
 		return {
 			.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
 			.pNext = nullptr,

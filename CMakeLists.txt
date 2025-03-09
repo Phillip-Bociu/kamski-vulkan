@@ -34,8 +34,7 @@ add_subdirectory(vma)
 file(GLOB_RECURSE LIB_CPP_FILES "src/*cpp")
 file(GLOB_RECURSE TEST_CPP_FILES "test/*cpp")
 file(GLOB_RECURSE GLSL_SOURCE_FILES
-	"${CMAKE_SOURCE_DIR}/src/shaders/*.frag"
-	"${CMAKE_SOURCE_DIR}/src/shaders/*.vert")
+	"${CMAKE_SOURCE_DIR}/src/shaders/*.glsl")
 
 
 # Renderer library

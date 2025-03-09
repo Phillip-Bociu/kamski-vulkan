@@ -95,22 +95,15 @@ int main() {
 			ExitProcess(0);
 		}
 
-		rc = kvk::createPipeline(state,
-								 pipeline,
-								 "shaders/simple_shader.vert.spv",
-								 "shaders/simple_shader.frag.spv");
+		rc = kvk::createPipeline(pipeline,
+								 state);
+
 		if(rc != kvk::ReturnCode::OK) {
 			ShowWindow(window, SW_HIDE);
 			logError("create pipeline did not work: %d", static_cast<int>(rc));
 			ExitProcess(0);
 		}
 
-		rc = kvk::createFramebuffers(state, pipeline);
-		if(rc != kvk::ReturnCode::OK) {
-			ShowWindow(window, SW_HIDE);
-			logError("create framebuffers did not work: %d", static_cast<int>(rc));
-			ExitProcess(0);
-		}
 		state.isInitialized.store(true);
 
 		allow.store(true);
@@ -156,11 +149,12 @@ int main() {
 						  1,
 						  &frame.inFlightFence);
 
-			if(recordCommandBuffer(frame.commandBuffer,
-								   pipeline,
-								   state.framebuffers[imageIndex],
-								   state.swapchainExtent,
-								   state.swapchainImages[imageIndex]) != kvk::ReturnCode::OK) {
+			if(kvk::recordCommandBuffer(frame.commandBuffer,
+										state.drawImage.image,
+										state.swapchainExtent,
+										state.swapchainImages[imageIndex],
+										state.drawImageDescriptors,
+										pipeline) != kvk::ReturnCode::OK) {
 				ShowWindow(window, SW_HIDE);
 				logError("Could not record commandBuffer");
 				ExitProcess(0);

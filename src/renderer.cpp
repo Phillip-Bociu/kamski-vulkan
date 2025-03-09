@@ -53,267 +53,44 @@ namespace kvk {
 		}
 	}
 
-	ReturnCode createPipeline(const RendererState& state,
-							  Pipeline& pipeline,
-							  const std::uint32_t* vertexShaderData,   const size_t vertexShaderSize,
-							  const std::uint32_t* fragmentShaderData, const size_t fragmentShaderSize) {
-		
-		VkShaderModuleCreateInfo shaderModuleCreateInfo = {
+	ReturnCode createShaderModuleFromMemory(VkShaderModule& shaderModule,
+											VkDevice device,
+											const std::uint32_t* shaderContents,
+											const std::uint64_t shaderSize) {
+		VkShaderModuleCreateInfo createInfo = {
 			.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-			.codeSize = vertexShaderSize,
-			.pCode = vertexShaderData,
+			.codeSize = shaderSize,
+			.pCode = shaderContents,
 		};
-		if(vkCreateShaderModule(state.device,
-								&shaderModuleCreateInfo,
+
+		if(vkCreateShaderModule(device,
+								&createInfo,
 								nullptr,
-								&pipeline.vertexShader) != VK_SUCCESS) {
-			logError("Could not create vertex shader");
-			return ReturnCode::SHADER_CREATION_ERROR;
-		}
-
-		shaderModuleCreateInfo.codeSize = fragmentShaderSize;
-		shaderModuleCreateInfo.pCode = fragmentShaderData;
-		if(vkCreateShaderModule(state.device,
-								&shaderModuleCreateInfo,
-								nullptr,
-								&pipeline.fragmentShader) != VK_SUCCESS) {
-			logError("Could not create fragment shader");
-			return ReturnCode::SHADER_CREATION_ERROR;
-		}
-
-		VkPipelineShaderStageCreateInfo shaderStageCreateInfo[2] = {
-			{
-				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-				.stage = VK_SHADER_STAGE_VERTEX_BIT,
-				.module = pipeline.vertexShader,
-				.pName = "main"
-			}, 
-			{
-				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-				.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-				.module = pipeline.fragmentShader,
-				.pName = "main"
-			}
-		};
-
-		VkDynamicState dynamicStates[] = {
-			VK_DYNAMIC_STATE_VIEWPORT,
-			VK_DYNAMIC_STATE_SCISSOR,
-		};
-		
-		VkPipelineDynamicStateCreateInfo dynamicStateCreateInfo = {
-			.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-			.dynamicStateCount = sizeof(dynamicStates) / sizeof(dynamicStates[0]),
-			.pDynamicStates = dynamicStates,
-		};
-
-		VkPipelineVertexInputStateCreateInfo vertexStateCreateInfo = {
-			.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-			.vertexBindingDescriptionCount = 0,
-			.pVertexBindingDescriptions = nullptr,
-			.vertexAttributeDescriptionCount = 0,
-			.pVertexAttributeDescriptions = nullptr
-		};
-
-		VkPipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo = {
-			.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-			.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-			.primitiveRestartEnable = VK_FALSE
-		};
-
-		VkViewport viewport =  {
-			.x = 0.0f,
-			.y = 0.0f,
-			.width = static_cast<float>(state.swapchainExtent.width),
-			.height = static_cast<float>(state.swapchainExtent.width),
-			.minDepth = 0.0f,
-			.maxDepth = 1.0f,
-		};
-		
-		VkRect2D scissor = {
-			.offset = {0, 0},
-			.extent = state.swapchainExtent
-		};
-		
-		VkPipelineViewportStateCreateInfo viewportStateCreateInfo = {
-			.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-			.viewportCount = 1,
-			.pViewports = &viewport,
-			.scissorCount = 1,
-			.pScissors = &scissor,
-		};
-
-		VkPipelineRasterizationStateCreateInfo rasterCreateInfo = {
-			.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-			.depthClampEnable = VK_FALSE,
-			.rasterizerDiscardEnable = VK_FALSE,
-			.polygonMode = VK_POLYGON_MODE_FILL,
-			.cullMode = VK_CULL_MODE_BACK_BIT,
-			.frontFace = VK_FRONT_FACE_CLOCKWISE,
-			.depthBiasEnable = VK_FALSE,
-			.depthBiasConstantFactor = 0.0f,
-			.depthBiasClamp = 0.0f,
-			.depthBiasSlopeFactor = 0.0f,
-			.lineWidth = 1.0f,
-		};
-
-		VkPipelineMultisampleStateCreateInfo multisamplingCreateInfo = {
-			.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-			.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
-			.sampleShadingEnable = VK_FALSE,
-			.minSampleShading = 1.0f,
-			.pSampleMask = nullptr,
-			.alphaToCoverageEnable = VK_FALSE,
-			.alphaToOneEnable = VK_FALSE,
-		};
-
-		VkPipelineColorBlendAttachmentState colorBlendAttachment = {
-			.blendEnable = VK_TRUE,
-			.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
-			.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
-			.colorBlendOp = VK_BLEND_OP_ADD,
-			.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
-			.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
-			.alphaBlendOp = VK_BLEND_OP_ADD,
-			.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
-		};
-
-		VkPipelineColorBlendStateCreateInfo blendCreateInfo = {
-			.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-			.logicOpEnable = VK_FALSE,
-			.attachmentCount = 1,
-			.pAttachments = &colorBlendAttachment,
-			.blendConstants = {
-				0.0f,
-				0.0f,
-				0.0f,
-				0.0f,
-			}
-		};
-
-		VkPipelineLayoutCreateInfo layoutCreateInfo = {
-			.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-			.setLayoutCount = 0,
-			.pSetLayouts = nullptr,
-			.pushConstantRangeCount = 0,
-			.pPushConstantRanges = nullptr
-		};
-
-		if(vkCreatePipelineLayout(state.device,
-								  &layoutCreateInfo,
-								  nullptr,
-								  &pipeline.layout) != VK_SUCCESS) {
-			logError("Could not create pipeline layout");
+								&shaderModule) != VK_SUCCESS) {
+			logError("Could not create shader module");
 			return ReturnCode::UNKNOWN;
 		}
-
-		VkAttachmentDescription colorAttachment = {
-			.format = state.swapchainImageFormat.format,
-			.samples = VK_SAMPLE_COUNT_1_BIT,
-			.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-			.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-			.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-			.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-			.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
-		};
-
-		VkAttachmentReference colorRef = {
-			.attachment = 0,
-			.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		};
-
-		VkSubpassDescription subpassDesc = {
-			.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
-			.colorAttachmentCount = 1,
-			.pColorAttachments = &colorRef
-		};
-
-		VkSubpassDependency subpassDep = {
-			.srcSubpass = VK_SUBPASS_EXTERNAL,
-			.dstSubpass = 0,
-			.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-			.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-			.srcAccessMask = 0,
-			.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-		};
-
-		VkRenderPassCreateInfo renderPassCreateInfo = {
-			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-			.attachmentCount = 1,
-			.pAttachments = &colorAttachment,
-			.subpassCount = 1,
-			.pSubpasses = &subpassDesc,
-			.dependencyCount = 1,
-			.pDependencies = &subpassDep
-		};
-
-		if(vkCreateRenderPass(state.device,
-							  &renderPassCreateInfo,
-							  nullptr,
-							  &pipeline.renderPass) != VK_SUCCESS) {
-			logError("Could not create render pass");
-			return ReturnCode::UNKNOWN;
-		}
-
-		VkGraphicsPipelineCreateInfo createInfo = {
-			.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-			.stageCount = 2,
-			.pStages = shaderStageCreateInfo,
-			.pVertexInputState = &vertexStateCreateInfo,
-			.pInputAssemblyState = &inputAssemblyCreateInfo,
-			.pViewportState = &viewportStateCreateInfo,
-			.pRasterizationState = &rasterCreateInfo,
-			.pMultisampleState = &multisamplingCreateInfo,
-			.pDepthStencilState = nullptr,
-			.pColorBlendState = &blendCreateInfo,
-			.pDynamicState = &dynamicStateCreateInfo,
-			.layout = pipeline.layout,
-			.renderPass = pipeline.renderPass,
-			.subpass = 0,
-			.basePipelineHandle = VK_NULL_HANDLE,
-			.basePipelineIndex = -1,
-		};
-
-		if(vkCreateGraphicsPipelines(state.device,
-									 VK_NULL_HANDLE,
-									 1,
-									 &createInfo,
-									 nullptr,
-									 &pipeline.pipeline) != VK_SUCCESS) {
-			logError("Could not create pipeline");
-			return ReturnCode::UNKNOWN;
-		}
-		logDebug("Created pipeline");
-
 		return ReturnCode::OK;
 	}
 
-	ReturnCode createPipeline(const RendererState& state,
-							  Pipeline& pipeline,
-							  const char* vertexShaderPath,
-							  const char* fragmentShaderPath) {
-		std::ifstream vs(vertexShaderPath, std::ios::ate | std::ios::binary);
+	ReturnCode createShaderModuleFromFile(VkShaderModule& shaderModule,
+										  VkDevice device,
+										  const char* shaderPath) {
+		std::ifstream vs(shaderPath, std::ios::ate | std::ios::binary);
 		if(!vs.is_open()) {
-			logError("File %s not found", vertexShaderPath);
+			logError("File %s not found", shaderPath);
 			return ReturnCode::FILE_NOT_FOUND;
 		}
-		std::vector<char> vsData(vs.tellg());
+
+		const std::uint64_t size = vs.tellg();
+		std::vector<std::uint32_t> vsData(size / 4);
 		vs.seekg(0);
-		vs.read(vsData.data(), vsData.size());
+		vs.read((char*)vsData.data(), size);
 
-		std::ifstream fs(fragmentShaderPath, std::ios::ate | std::ios::binary);
-		if(!fs.is_open()) {
-			logError("File %s not found", fragmentShaderPath);
-			return ReturnCode::FILE_NOT_FOUND;
-		}
-		std::vector<char> fsData(fs.tellg());
-		fs.seekg(0);
-		fs.read(fsData.data(), fsData.size());
-
-		return createPipeline(state, pipeline,
-							  reinterpret_cast<std::uint32_t*>(vsData.data()), vsData.size(),
-							  reinterpret_cast<std::uint32_t*>(fsData.data()), fsData.size());
+		return createShaderModuleFromMemory(shaderModule,
+											device,
+											vsData.data(),
+											size);
 	}
 
 	ReturnCode init(RendererState& state, const InitSettings* settings) {
@@ -339,7 +116,6 @@ namespace kvk {
 		const char* desiredLayers[] = {
 		"VK_LAYER_KHRONOS_validation",
 		};
-		logDebug("what %llu", sizeof(desiredLayers));
 
 		std::uint32_t layerCount = 0;
 		vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
@@ -533,6 +309,7 @@ namespace kvk {
 			return ReturnCode::DEVICE_NOT_FOUND;
 		}
 
+
 		/*=====================================
 				Logical device creation
 		  =====================================*/
@@ -561,10 +338,14 @@ namespace kvk {
 		VkPhysicalDeviceVulkan13Features features13 = {
 			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
 		};
+		VkPhysicalDeviceVulkan12Features features12 = {
+			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+			.pNext = &features13,
+		};
 		
 		VkPhysicalDeviceFeatures2 allDeviceFeatures = {
 			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-			.pNext = &features13
+			.pNext = &features12,
 		};
 
 		vkGetPhysicalDeviceFeatures2(state.physicalDevice,
@@ -575,13 +356,25 @@ namespace kvk {
 			return ReturnCode::UNKNOWN;
 		}
 
+		if(!features12.bufferDeviceAddress) {
+			logInfo("bufferDeviceAddress is not available");
+			return ReturnCode::UNKNOWN;
+		}
+
 		features13 = VkPhysicalDeviceVulkan13Features {
 			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
 			.synchronization2 = VK_TRUE
 		};
+
+		features12 = VkPhysicalDeviceVulkan12Features {
+			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+			.pNext = &features13,
+			.bufferDeviceAddress = VK_TRUE,
+		};
+
 		allDeviceFeatures = VkPhysicalDeviceFeatures2 {
 			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-			.pNext = &features13
+			.pNext = &features12,
 		};
 		
 		VkDeviceCreateInfo deviceCreateInfo = {
@@ -672,6 +465,46 @@ namespace kvk {
 			imageCount = surfaceCapabilities.maxImageCount;
 		}
 
+		VkDescriptorPoolSize poolSizes[] {
+			{
+				.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+				.descriptorCount = 10,
+			},
+		};
+
+
+		if(createDescriptorPool(state.descriptorPool,
+								state.device,
+								poolSizes,
+								sizeof(poolSizes) / sizeof(poolSizes[0])) != ReturnCode::OK) {
+			return ReturnCode::UNKNOWN;
+		}
+		logInfo("Created descriptor pool");
+
+		VkDescriptorSetLayoutBinding bindings[] {
+			{
+				.binding = 0,
+				.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+				.descriptorCount = 1,
+			}
+		};
+
+		if(createDescriptorSetLayout(state.drawImageDescriptorLayout,
+									 state.device,
+									 VK_SHADER_STAGE_COMPUTE_BIT,
+									 bindings,
+									 sizeof(bindings) / sizeof(bindings[0])) != ReturnCode::OK) {
+			return ReturnCode::UNKNOWN;
+		}
+		logInfo("Created descriptor set layout");
+
+		if(allocateDescriptorSet(state.drawImageDescriptors,
+								 state.descriptorPool,
+								 state.device,
+								 state.drawImageDescriptorLayout) != ReturnCode::OK) {
+			return ReturnCode::UNKNOWN;
+		}
+
 		if(createSwapchain(state,
 						   chosenExtent,
 						   chosenFormat,
@@ -733,15 +566,51 @@ namespace kvk {
 				return ReturnCode::UNKNOWN;
 			}
 		}
-
 		return ReturnCode::OK;
 	}
 
+	static void drawBackground(VkCommandBuffer commandBuffer,
+							   VkPipeline pipeline,
+							   VkPipelineLayout pipelineLayout,
+							   VkDescriptorSet drawImageDescriptors,
+							   VkExtent2D drawExtent) {
+		vkCmdBindPipeline(commandBuffer,
+						  VK_PIPELINE_BIND_POINT_COMPUTE,
+						  pipeline);
+
+		vkCmdBindDescriptorSets(commandBuffer,
+								VK_PIPELINE_BIND_POINT_COMPUTE,
+								pipelineLayout,
+								0,
+								1,
+								&drawImageDescriptors,
+								0,
+								nullptr);
+
+		static float lmao = 0.0f;
+		lmao += 0.001f;
+		PushConstants pc {
+			lmao
+		};
+		vkCmdPushConstants(commandBuffer,
+						   pipelineLayout,
+						   VK_SHADER_STAGE_COMPUTE_BIT,
+						   0,
+						   sizeof(PushConstants),
+						   &pc);
+
+		vkCmdDispatch(commandBuffer,
+					  std::ceil(drawExtent.width / 16.0),
+					  std::ceil(drawExtent.height / 16.0),
+					  1);
+	}
+
 	ReturnCode recordCommandBuffer(VkCommandBuffer commandBuffer,
-								   Pipeline& pipeline,
-								   VkFramebuffer framebuffer,
+								   VkImage drawImage,
 								   const VkExtent2D& extent,
-								   VkImage image) {
+								   VkImage image,
+								   VkDescriptorSet drawImageDescriptors,
+								   const Pipeline& pipeline) {
 
 		vkResetCommandBuffer(commandBuffer, 0);
 		VkCommandBufferBeginInfo beginInfo = {
@@ -752,49 +621,38 @@ namespace kvk {
 			logError("Could not start command buffer recording");
 			return ReturnCode::UNKNOWN;
 		}
+		transitionImage(commandBuffer,
+						drawImage,
+						VK_IMAGE_LAYOUT_UNDEFINED,
+						VK_IMAGE_LAYOUT_GENERAL);
+
+		drawBackground(commandBuffer,
+					   pipeline.pipeline,
+					   pipeline.layout,
+					   drawImageDescriptors,
+					   extent);
+
+		transitionImage(commandBuffer,
+						drawImage,
+						VK_IMAGE_LAYOUT_GENERAL,
+						VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
 		transitionImage(commandBuffer,
 						image,
 						VK_IMAGE_LAYOUT_UNDEFINED,
-						VK_IMAGE_LAYOUT_GENERAL);
+						VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-		VkClearColorValue clearColor = {1.0f, 0.0f, 0.0f, 1.0};
-
-		VkViewport viewport = {
-			.width = static_cast<float>(extent.width),
-			.height = static_cast<float>(extent.height),
-			.minDepth = 0.0f,
-			.maxDepth = 1.0f,
-		};
-
-		vkCmdSetViewport(commandBuffer,
-						 0,
-						 1,
-						 &viewport);
-
-		VkRect2D scissor = {
-			.offset = {0, 0},
-			.extent = extent,
-		};
-
-		vkCmdSetScissor(commandBuffer, 
-						0,
-						1,
-						&scissor);
-
-		VkImageSubresourceRange clearRange = imageSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT);
-
-		vkCmdClearColorImage(commandBuffer,
-							 image,
-							 VK_IMAGE_LAYOUT_GENERAL,
-							 &clearColor,
-							 1,
-							 &clearRange);
+		blitImageToImage(commandBuffer,
+						 drawImage,
+						 image,
+						 extent,
+						 extent);
 
 		transitionImage(commandBuffer,
 						image,
-						VK_IMAGE_LAYOUT_GENERAL,
+						VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 						VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
 
 		if(vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
 			logError("Could not end command buffer");
@@ -910,7 +768,8 @@ namespace kvk {
 			VK_IMAGE_USAGE_STORAGE_BIT | 
 			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-		VkImageCreateInfo drawImageCreateInfo = imageCreateInfo(format.format,
+		VkImageCreateInfo drawImageCreateInfo = imageCreateInfo(state.physicalDevice,
+																VK_FORMAT_R16G16B16A16_SFLOAT,
 																drawImageUsage,
 																drawImageExtent);
 
@@ -926,7 +785,7 @@ namespace kvk {
 					   &state.drawImage.allocation,
 					   nullptr);
 
-		VkImageViewCreateInfo drawImageViewInfo = imageViewCreateInfo(format.format,
+		VkImageViewCreateInfo drawImageViewInfo = imageViewCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT,
 																	  state.drawImage.image,
 																	  VK_IMAGE_ASPECT_COLOR_BIT);
 		if(vkCreateImageView(state.device,
@@ -936,37 +795,25 @@ namespace kvk {
 			logError("Could not create draw image");
 			return ReturnCode::UNKNOWN;
 		}
-		return ReturnCode::OK;
-	}
+		VkDescriptorImageInfo imageInfo = {
+			.imageView = state.drawImage.view,
+			.imageLayout = VK_IMAGE_LAYOUT_GENERAL,
+		};
 
-	ReturnCode createFramebuffers(RendererState& state,
-								  Pipeline& pipeline) {
-		state.framebuffers.resize(state.swapchainImages.size());
+		VkWriteDescriptorSet writeDescriptor = {
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstSet = state.drawImageDescriptors,
+			.dstBinding = 0,
+			.descriptorCount = 1,
+			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+			.pImageInfo = &imageInfo,
+		};
 
-		for(int i = 0; i != state.swapchainImages.size(); i++) {
-			VkImageView attachments[] = {
-				state.swapchainImageViews[i]
-			};
-			VkFramebufferCreateInfo createInfo = {
-				.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-				.renderPass = pipeline.renderPass,
-				.attachmentCount = 1,
-				.pAttachments = attachments,
-				.width = state.swapchainExtent.width,
-				.height = state.swapchainExtent.height,
-				.layers = 1
-			};
-
-			if(vkCreateFramebuffer(state.device,
-								   &createInfo,
-								   nullptr,
-								   &state.framebuffers[i]) != VK_SUCCESS) {
-				logError("Could not create framebuffers");
-				return ReturnCode::UNKNOWN;
-			}
-		}
-		//logInfo("Created framebuffers");
-
+		vkUpdateDescriptorSets(state.device,
+							   1,
+							   &writeDescriptor,
+							   0,
+							   nullptr);
 		return ReturnCode::OK;
 	}
 
@@ -979,12 +826,6 @@ namespace kvk {
 			state.swapchainExtent.width = x;
 			state.swapchainExtent.height = y;
 			return ReturnCode::OK;
-		}
-
-		for(VkFramebuffer framebuffer : state.framebuffers) {
-			vkDestroyFramebuffer(state.device,
-								 framebuffer,
-								 nullptr);
 		}
 
 		for(VkImageView imageView : state.swapchainImageViews) {
@@ -1007,15 +848,71 @@ namespace kvk {
 			chosenExtent.width = std::clamp(x, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
 			chosenExtent.height = std::clamp(y, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
 		}
-		ReturnCode rc = createSwapchain(state,
-										chosenExtent,
-										state.swapchainImageFormat,
-										state.swapchainPresentMode,
-										state.swapchainImageCount);
+
+		return createSwapchain(state,
+							   chosenExtent,
+							   state.swapchainImageFormat,
+							   state.swapchainPresentMode,
+							   state.swapchainImageCount);
+	}
+
+	ReturnCode createPipeline(Pipeline& pipeline,
+							  const RendererState& state) {
+		VkPushConstantRange pcRange = {
+			.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+			.offset = 0,
+			.size = sizeof(PushConstants),
+		};
+		
+		VkPipelineLayoutCreateInfo layoutCreateInfo = {
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+			.setLayoutCount = 1,
+			.pSetLayouts = &state.drawImageDescriptorLayout,
+			.pushConstantRangeCount = 1,
+			.pPushConstantRanges = &pcRange
+		};
+
+		if(vkCreatePipelineLayout(state.device,
+								  &layoutCreateInfo,
+								  nullptr,
+								  &pipeline.layout) != VK_SUCCESS) {
+			logError("Could not create pipeline layout");
+			return ReturnCode::UNKNOWN;
+		}
+
+		VkShaderModule shaderModule;
+		ReturnCode rc = createShaderModuleFromFile(shaderModule,
+												   state.device,
+												   "shaders/gradient.comp.glsl.spv");
 		if(rc != ReturnCode::OK) {
 			return rc;
 		}
+												   
+		VkComputePipelineCreateInfo createInfo = {
+			.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+			.stage = {
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+				.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+				.module = shaderModule,
+				.pName = "main"
+			},
+			.layout = pipeline.layout,
+		};
 
-		return createFramebuffers(state, pipeline);
+		if(vkCreateComputePipelines(state.device,
+									VK_NULL_HANDLE,
+									1,
+									&createInfo,
+									nullptr,
+									&pipeline.pipeline) != VK_SUCCESS) {
+			logError("Could not create pipeline");
+			return ReturnCode::UNKNOWN;
+		}
+
+		vkDestroyShaderModule(state.device, 
+							  shaderModule,
+							  nullptr);
+		return ReturnCode::OK;
 	}
+
 }

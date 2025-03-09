@@ -9,7 +9,7 @@ namespace kvk {
 #define logError(format, ...)   printf("[ERROR][%5d]: " __FILE__ ": " format "\n", __LINE__, __VA_ARGS__)
 #endif
 
-enum class ReturnCode {
+enum class [[nodiscard]] ReturnCode {
 	OK,
 	WRONG_PARAMETERS,
 	LAYER_NOT_FOUND,

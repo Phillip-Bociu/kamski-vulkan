@@ -29,18 +29,17 @@ namespace kvk {
 #endif
 	};
 
+	struct PushConstants {
+		float time;
+	};
+
 	struct Deletion {
 		void(*deleteFunc)(void* handle);
 		void* vkHandle;
 	};
 
 	struct Pipeline {
-		VkShaderModule vertexShader;
-		VkShaderModule fragmentShader;
-
-		VkRenderPass renderPass;
 		VkPipelineLayout layout;
-
 		VkPipeline pipeline;
 	};
 
@@ -76,6 +75,9 @@ namespace kvk {
 		std::uint32_t computeFamilyIndex;
 
 		VkCommandPool commandPool;
+		VkDescriptorPool descriptorPool;
+		VkDescriptorSet drawImageDescriptors;
+		VkDescriptorSetLayout drawImageDescriptorLayout;
 		
 		VkQueue graphicsQueue;
 		VkQueue presentQueue;
@@ -101,21 +103,23 @@ namespace kvk {
 
 
 	ReturnCode init(RendererState& state, const InitSettings* settings);
-	ReturnCode createPipeline(const RendererState& state, 
-							  Pipeline& pipeline,
-							  const char* vertexShaderPath,
-							  const char* fragmentShaderPath);
 
-	ReturnCode createPipeline(const RendererState& state,
-							  Pipeline& pipeline,
-							  const std::uint32_t* vertexShaderData,   const size_t vertexShaderSize,
-							  const std::uint32_t* fragmentShaderData, const size_t fragmentShaderSize);
+	ReturnCode createShaderModuleFromFile(VkShaderModule& shaderModule,
+										  VkDevice device,
+										  const char* shaderPath);
+
+	ReturnCode createShaderModuleFromMemory(VkShaderModule& shaderModule,
+											VkDevice device,
+											const std::uint32_t* shaderContents,
+											const std::uint64_t shaderSize);
 
 	ReturnCode recordCommandBuffer(VkCommandBuffer commandBuffer,
-								   Pipeline& pipeline,
-								   VkFramebuffer framebuffer,
+								   VkImage drawImage,
 								   const VkExtent2D& extent,
-								   VkImage image);
+								   VkImage image,
+								   VkDescriptorSet drawImageDescriptors,
+								   const Pipeline& pipeline);
+
 	
 	ReturnCode createSwapchain(RendererState& state,
 							   VkExtent2D extent,
@@ -123,11 +127,11 @@ namespace kvk {
 							   VkPresentModeKHR presentMode,
 							   std::uint32_t imageCount);
 
-	ReturnCode createFramebuffers(RendererState& state,
-								 Pipeline& pipeline);
-
 	ReturnCode recreateSwapchain(RendererState& state,
 								 Pipeline& pipeline,
 								 const std::uint32_t x,
 								 const std::uint32_t y);
+
+	ReturnCode createPipeline(Pipeline& pipeline,
+							  const RendererState& state);
 }

@@ -438,12 +438,14 @@ namespace kvk {
 
 		VkPresentModeKHR chosenPresentMode = surfacePresentModes[0];
 		for (const VkPresentModeKHR pm : surfacePresentModes) {
-			if (pm == VK_PRESENT_MODE_MAILBOX_KHR) {
+			if (pm == VK_PRESENT_MODE_FIFO_KHR) {
 				chosenPresentMode = pm;
 				break;
 			}
 		}
 		state.swapchainPresentMode = chosenPresentMode;
+
+		logInfo("Presentmode: %d", chosenPresentMode);
 
 		VkExtent2D chosenExtent;
 
@@ -848,6 +850,14 @@ namespace kvk {
 			chosenExtent.width = std::clamp(x, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
 			chosenExtent.height = std::clamp(y, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
 		}
+
+
+		vkDestroyImageView(state.device,
+						   state.drawImage.view,
+						   nullptr);
+		vmaDestroyImage(state.allocator,
+						state.drawImage.image,
+						state.drawImage.allocation);
 
 		return createSwapchain(state,
 							   chosenExtent,

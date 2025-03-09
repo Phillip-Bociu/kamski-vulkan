@@ -10,7 +10,6 @@ std::mutex renderThreadMutex;
 std::atomic<bool> allow;
 
 static LRESULT CALLBACK winProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
-
 	switch (message) {
 		case WM_USER: {
 			return 0;
@@ -22,9 +21,9 @@ static LRESULT CALLBACK winProc(HWND window, UINT message, WPARAM wParam, LPARAM
 		case WM_SIZE: {
 			if (state.isInitialized.load()) {
 				allow.store(false);
-				std::lock_guard<std::mutex> lck(renderThreadMutex);
 				RECT res = {};
 				GetClientRect(window, &res);
+				std::lock_guard<std::mutex> lck(renderThreadMutex);
 				if(kvk::recreateSwapchain(state,
 										  pipeline,
 										  res.right,
@@ -220,6 +219,7 @@ int main() {
 		while (PeekMessage(&msg, 0, 0, 0, PM_REMOVE)) {
 			switch (msg.message) {
 				case WM_QUIT: {
+					logInfo("YEPPERS");
 					ShowWindow(window, SW_HIDE);
 					ExitProcess(0);
 				} break;

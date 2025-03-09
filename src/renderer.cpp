@@ -590,9 +590,11 @@ namespace kvk {
 								nullptr);
 
 		static float lmao = 0.0f;
-		lmao += 0.001f;
+		lmao += 0.01f;
 		PushConstants pc {
-			lmao
+			lmao,
+			0,
+			-lmao * 511.0f,
 		};
 		vkCmdPushConstants(commandBuffer,
 						   pipelineLayout,
@@ -602,7 +604,7 @@ namespace kvk {
 						   &pc);
 
 		vkCmdDispatch(commandBuffer,
-					  std::ceil(drawExtent.width / 16.0),
+					  std::ceil(drawExtent.width  / 16.0),
 					  std::ceil(drawExtent.height / 16.0),
 					  1);
 	}
@@ -668,7 +670,8 @@ namespace kvk {
 							   VkExtent2D extent,
 							   VkSurfaceFormatKHR format,
 							   VkPresentModeKHR presentMode,
-							   std::uint32_t imageCount) {
+							   std::uint32_t imageCount,
+							   VkSwapchainKHR oldSwapchain) {
 		state.swapchainExtent = extent;
 		state.swapchainImageFormat = format;
 		state.swapchainPresentMode = presentMode;
@@ -706,6 +709,7 @@ namespace kvk {
 			.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
 			.presentMode = presentMode,
 			.clipped = VK_TRUE,
+			.oldSwapchain = oldSwapchain
 		};
 
 		if(vkCreateSwapchainKHR(state.device,
@@ -835,9 +839,8 @@ namespace kvk {
 							   imageView,
 							   nullptr);
 		}
-		vkDestroySwapchainKHR(state.device, 
-							  state.swapchain,
-							  nullptr);
+
+		VkSwapchainKHR oldSwapchain = state.swapchain;
 		
 		VkExtent2D chosenExtent;
 		VkSurfaceCapabilitiesKHR surfaceCapabilities;
@@ -859,11 +862,16 @@ namespace kvk {
 						state.drawImage.image,
 						state.drawImage.allocation);
 
-		return createSwapchain(state,
-							   chosenExtent,
-							   state.swapchainImageFormat,
-							   state.swapchainPresentMode,
-							   state.swapchainImageCount);
+		ReturnCode rc = createSwapchain(state,
+										chosenExtent,
+										state.swapchainImageFormat,
+										state.swapchainPresentMode,
+										state.swapchainImageCount,
+										oldSwapchain);
+		vkDestroySwapchainKHR(state.device,
+							  oldSwapchain,
+							  nullptr);
+		return rc;
 	}
 
 	ReturnCode createPipeline(Pipeline& pipeline,

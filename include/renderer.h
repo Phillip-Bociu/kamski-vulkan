@@ -31,6 +31,8 @@ namespace kvk {
 
 	struct PushConstants {
 		float time;
+		int thingy;
+		int thingy2;
 	};
 
 	struct Deletion {
@@ -125,7 +127,8 @@ namespace kvk {
 							   VkExtent2D extent,
 							   VkSurfaceFormatKHR format,
 							   VkPresentModeKHR presentMode,
-							   std::uint32_t imageCount);
+							   std::uint32_t imageCount,
+							   VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE);
 
 	ReturnCode recreateSwapchain(RendererState& state,
 								 Pipeline& pipeline,

@@ -45,6 +45,40 @@ namespace kvk {
 		VkPipeline pipeline;
 	};
 
+	struct PipelineBuilder {
+		PipelineBuilder();
+
+		std::vector<VkDynamicState> dynamicState;
+		std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
+		std::vector<VkPushConstantRange> pushConstantRanges;
+		std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
+
+		VkFormat colorAttachmentFormat;
+		VkFormat depthAttachmentFormat;
+
+		VkPipelineLayoutCreateInfo layoutCreateInfo;
+		VkPipelineViewportStateCreateInfo viewportState;
+		VkPipelineColorBlendAttachmentState colorBlendAttachment ;
+		VkPipelineColorBlendStateCreateInfo blendState;
+		VkPipelineVertexInputStateCreateInfo inputState;
+		VkPipelineDynamicStateCreateInfo dynamicStateInfo;
+		VkPipelineInputAssemblyStateCreateInfo inputAssembly;
+		VkPipelineMultisampleStateCreateInfo multisample;
+		VkPipelineDepthStencilStateCreateInfo depthStencil;
+		VkPipelineRenderingCreateInfo renderInfo;
+		VkPipelineRasterizationStateCreateInfo rasterizer;
+
+		PipelineBuilder& setShaders(VkShaderModule vertexShader, VkShaderModule fragmentShader);
+		PipelineBuilder& setInputTopology(VkPrimitiveTopology topology);
+		PipelineBuilder& setPolygonMode(VkPolygonMode poly);
+		PipelineBuilder& setPolygonMode(VkCullModeFlags cullMode, VkFrontFace face);
+		PipelineBuilder& setColorAttachmentFormat(VkFormat format);
+		PipelineBuilder& setDepthAttachmentFormat(VkFormat format);
+
+		ReturnCode build(Pipeline& pipeline,
+						 const VkDevice device);
+	};
+
 	struct AllocatedImage {
 		VkImage image;
 		VkImageView view;
@@ -136,5 +170,6 @@ namespace kvk {
 								 const std::uint32_t y);
 
 	ReturnCode createPipeline(Pipeline& pipeline,
-							  const RendererState& state);
+							  const VkDevice device,
+							  const VkDescriptorSetLayout setLayout);
 }

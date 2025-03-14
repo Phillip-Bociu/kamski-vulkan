@@ -95,7 +95,8 @@ int main() {
 		}
 
 		rc = kvk::createPipeline(pipeline,
-								 state);
+								 state.device,
+								 state.drawImageDescriptorLayout);
 
 		if(rc != kvk::ReturnCode::OK) {
 			ShowWindow(window, SW_HIDE);

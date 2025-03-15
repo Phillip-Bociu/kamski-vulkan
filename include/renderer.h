@@ -71,7 +71,7 @@ namespace kvk {
 		PipelineBuilder& setShaders(VkShaderModule vertexShader, VkShaderModule fragmentShader);
 		PipelineBuilder& setInputTopology(VkPrimitiveTopology topology);
 		PipelineBuilder& setPolygonMode(VkPolygonMode poly);
-		PipelineBuilder& setPolygonMode(VkCullModeFlags cullMode, VkFrontFace face);
+		PipelineBuilder& setCullMode(VkCullModeFlags cullMode, VkFrontFace face);
 		PipelineBuilder& setColorAttachmentFormat(VkFormat format);
 		PipelineBuilder& setDepthAttachmentFormat(VkFormat format);
 
@@ -151,6 +151,7 @@ namespace kvk {
 
 	ReturnCode recordCommandBuffer(VkCommandBuffer commandBuffer,
 								   VkImage drawImage,
+								   VkImageView drawImageView,
 								   const VkExtent2D& extent,
 								   VkImage image,
 								   VkDescriptorSet drawImageDescriptors,

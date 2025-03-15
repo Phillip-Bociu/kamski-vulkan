@@ -94,9 +94,31 @@ int main() {
 			ExitProcess(0);
 		}
 
-		rc = kvk::createPipeline(pipeline,
-								 state.device,
-								 state.drawImageDescriptorLayout);
+		VkShaderModule vertexShader;
+		rc = kvk::createShaderModuleFromFile(vertexShader,
+											 state.device,
+											 "shaders/simple_shader.vert.glsl.spv");
+		if(rc != kvk::ReturnCode::OK) {
+			ExitProcess(1);
+		}
+
+		VkShaderModule fragmentShader;
+		rc = kvk::createShaderModuleFromFile(fragmentShader,
+											 state.device,
+											 "shaders/simple_shader.frag.glsl.spv");
+		if(rc != kvk::ReturnCode::OK) {
+			ExitProcess(1);
+		}
+
+		rc = kvk::PipelineBuilder()
+		.setColorAttachmentFormat(state.swapchainImageFormat.format)
+		.setShaders(vertexShader, fragmentShader)
+		.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+		.setPolygonMode(VK_POLYGON_MODE_FILL)
+		.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE)
+		.setColorAttachmentFormat(state.drawImage.format)
+		.setDepthAttachmentFormat(VK_FORMAT_UNDEFINED)
+		.build(pipeline, state.device);
 
 		if(rc != kvk::ReturnCode::OK) {
 			ShowWindow(window, SW_HIDE);
@@ -151,6 +173,7 @@ int main() {
 
 			if(kvk::recordCommandBuffer(frame.commandBuffer,
 										state.drawImage.image,
+										state.drawImage.view,
 										state.swapchainExtent,
 										state.swapchainImages[imageIndex],
 										state.drawImageDescriptors,

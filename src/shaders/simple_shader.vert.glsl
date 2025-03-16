@@ -1,4 +1,4 @@
-#version 450
+#version 460
 
 vec2 pos[3] = vec2[](
 	vec2(0.0, -0.5),

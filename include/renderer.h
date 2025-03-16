@@ -6,9 +6,11 @@
 
 #include <cstdint>
 #include <vector>
+#include <span>
 #include <atomic>
 #include <vulkan/vulkan.h>
 #include <vk_mem_alloc.h>
+#include <glm/glm.hpp>
 #include "common.h"
 
 #if defined(_WIN32)
@@ -29,12 +31,6 @@ namespace kvk {
 #endif
 	};
 
-	struct PushConstants {
-		float time;
-		int thingy;
-		int thingy2;
-	};
-
 	struct Deletion {
 		void(*deleteFunc)(void* handle);
 		void* vkHandle;
@@ -43,6 +39,20 @@ namespace kvk {
 	struct Pipeline {
 		VkPipelineLayout layout;
 		VkPipeline pipeline;
+	};
+
+	struct AllocatedImage {
+		VkImage image;
+		VkImageView view;
+		VmaAllocation allocation;
+		VkExtent3D extent;
+		VkFormat format;
+	};
+
+	struct AllocatedBuffer {
+		VkBuffer buffer;
+		VmaAllocation allocation;
+		VmaAllocationInfo info;
 	};
 
 	struct PipelineBuilder {
@@ -54,11 +64,10 @@ namespace kvk {
 		std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
 
 		VkFormat colorAttachmentFormat;
-		VkFormat depthAttachmentFormat;
 
 		VkPipelineLayoutCreateInfo layoutCreateInfo;
 		VkPipelineViewportStateCreateInfo viewportState;
-		VkPipelineColorBlendAttachmentState colorBlendAttachment ;
+		VkPipelineColorBlendAttachmentState colorBlendAttachment;
 		VkPipelineColorBlendStateCreateInfo blendState;
 		VkPipelineVertexInputStateCreateInfo inputState;
 		VkPipelineDynamicStateCreateInfo dynamicStateInfo;
@@ -74,17 +83,14 @@ namespace kvk {
 		PipelineBuilder& setCullMode(VkCullModeFlags cullMode, VkFrontFace face);
 		PipelineBuilder& setColorAttachmentFormat(VkFormat format);
 		PipelineBuilder& setDepthAttachmentFormat(VkFormat format);
+		PipelineBuilder& enableDepthTest(bool depthWriteEnable, VkCompareOp op);
+
+		PipelineBuilder& addPushConstantRange(VkShaderStageFlags stage,
+											  std::uint32_t size,
+											  std::uint32_t offset = 0);
 
 		ReturnCode build(Pipeline& pipeline,
 						 const VkDevice device);
-	};
-
-	struct AllocatedImage {
-		VkImage image;
-		VkImageView view;
-		VmaAllocation allocation;
-		VkExtent3D extent;
-		VkFormat format;
 	};
 
 	struct FrameData {
@@ -94,6 +100,35 @@ namespace kvk {
 		VkSemaphore renderFinishedSemaphore;
 
 		std::vector<Deletion> deletionQueue;
+	};
+
+	struct Vertex {
+		glm::vec3 position;
+		float uvX;
+		glm::vec3 normal;
+		float uvY;
+		glm::vec4 color;
+	};
+
+	struct PushConstants {
+		glm::mat4 worldMatrix;
+		VkDeviceAddress vertexBuffer;
+	};
+
+	struct Mesh {
+		AllocatedBuffer indices;
+		AllocatedBuffer vertices;
+		VkDeviceAddress vertexBufferAddress;
+	};
+
+	struct GeoSurface {
+		std::uint32_t startIndex;
+		std::uint32_t count;
+	};
+
+	struct MeshAsset {
+		Mesh mesh;
+		std::vector<GeoSurface> surfaces;
 	};
 
 	static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 2;
@@ -106,6 +141,7 @@ namespace kvk {
 		VkInstance instance;
 		VkDevice device;
 		VkPhysicalDevice physicalDevice;
+		std::uint32_t transferFamilyIndex;
 		std::uint32_t graphicsFamilyIndex;
 		std::uint32_t presentFamilyIndex;
 		std::uint32_t computeFamilyIndex;
@@ -115,6 +151,7 @@ namespace kvk {
 		VkDescriptorSet drawImageDescriptors;
 		VkDescriptorSetLayout drawImageDescriptorLayout;
 		
+		VkQueue transferQueue;
 		VkQueue graphicsQueue;
 		VkQueue presentQueue;
 		VkQueue computeQueue;
@@ -122,7 +159,10 @@ namespace kvk {
 		VkSurfaceKHR surface;
 
 		FrameData frames[MAX_IN_FLIGHT_FRAMES];
+		VkCommandBuffer transferCommandBuffers[4];
+
 		AllocatedImage drawImage;
+		AllocatedImage depthImage;
 
 		//
 		// Swapchain stuff
@@ -150,12 +190,14 @@ namespace kvk {
 											const std::uint64_t shaderSize);
 
 	ReturnCode recordCommandBuffer(VkCommandBuffer commandBuffer,
-								   VkImage drawImage,
-								   VkImageView drawImageView,
+								   AllocatedImage& drawImage,
+								   AllocatedImage& depthImage,
 								   const VkExtent2D& extent,
 								   VkImage image,
 								   VkDescriptorSet drawImageDescriptors,
-								   const Pipeline& pipeline);
+								   const Pipeline& pipeline,
+								   const Pipeline& meshPipeline,
+								   const std::vector<MeshAsset>& meshes);
 
 	
 	ReturnCode createSwapchain(RendererState& state,
@@ -166,11 +208,31 @@ namespace kvk {
 							   VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE);
 
 	ReturnCode recreateSwapchain(RendererState& state,
-								 Pipeline& pipeline,
 								 const std::uint32_t x,
 								 const std::uint32_t y);
 
-	ReturnCode createPipeline(Pipeline& pipeline,
-							  const VkDevice device,
-							  const VkDescriptorSetLayout setLayout);
+	ReturnCode createMesh(Mesh& mesh,
+						  RendererState& state,
+						  std::span<std::uint32_t> indices, 
+						  std::span<Vertex> vertices);
+
+	ReturnCode createBuffer(AllocatedBuffer& buffer,
+							VmaAllocator allocator,
+							std::uint64_t size,
+							VkBufferUsageFlags bufferUsage,
+							VmaMemoryUsage memoryUsage);
+
+	void destroyBuffer(AllocatedBuffer& buffer,
+					   VmaAllocator allocator);
+
+	ReturnCode createImage(AllocatedImage& image,
+						   RendererState& state,
+						   const VkFormat format,
+						   const VkExtent3D extent,
+						   const VkImageUsageFlags usageFlags,
+						   const VkImageAspectFlags aspectFlags);
+
+	ReturnCode loadGltf(std::vector<MeshAsset>& retval,
+						RendererState& state,
+						const char* filePath);
 }

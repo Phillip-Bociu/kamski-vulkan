@@ -5,7 +5,6 @@
 #include <mutex>
 
 kvk::RendererState state;
-kvk::Pipeline pipeline;
 std::mutex renderThreadMutex;
 std::atomic<bool> allow;
 
@@ -25,7 +24,6 @@ static LRESULT CALLBACK winProc(HWND window, UINT message, WPARAM wParam, LPARAM
 				GetClientRect(window, &res);
 				std::lock_guard<std::mutex> lck(renderThreadMutex);
 				if(kvk::recreateSwapchain(state,
-										  pipeline,
 										  res.right,
 										  res.bottom) != kvk::ReturnCode::OK) {
 					ShowWindow(window, SW_HIDE);
@@ -68,8 +66,8 @@ int main() {
 								  WS_OVERLAPPEDWINDOW,
 								  CW_USEDEFAULT,
 								  CW_USEDEFAULT,
-								  1600,
-								  900,
+								  1000,
+								  1000,
 								  NULL,
 								  NULL,
 								  instance,
@@ -102,6 +100,14 @@ int main() {
 			ExitProcess(1);
 		}
 
+		VkShaderModule meshVertexShader;
+		rc = kvk::createShaderModuleFromFile(meshVertexShader,
+											 state.device,
+											 "shaders/mesh.vert.glsl.spv");
+		if(rc != kvk::ReturnCode::OK) {
+			ExitProcess(1);
+		}
+
 		VkShaderModule fragmentShader;
 		rc = kvk::createShaderModuleFromFile(fragmentShader,
 											 state.device,
@@ -110,15 +116,16 @@ int main() {
 			ExitProcess(1);
 		}
 
+		kvk::Pipeline pipeline;
 		rc = kvk::PipelineBuilder()
-		.setColorAttachmentFormat(state.swapchainImageFormat.format)
-		.setShaders(vertexShader, fragmentShader)
-		.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
-		.setPolygonMode(VK_POLYGON_MODE_FILL)
-		.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE)
-		.setColorAttachmentFormat(state.drawImage.format)
-		.setDepthAttachmentFormat(VK_FORMAT_UNDEFINED)
-		.build(pipeline, state.device);
+			.setColorAttachmentFormat(state.swapchainImageFormat.format)
+			.setShaders(vertexShader, fragmentShader)
+			.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+			.setPolygonMode(VK_POLYGON_MODE_FILL)
+			.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE)
+			.setColorAttachmentFormat(state.drawImage.format)
+			.setDepthAttachmentFormat(VK_FORMAT_UNDEFINED)
+			.build(pipeline, state.device);
 
 		if(rc != kvk::ReturnCode::OK) {
 			ShowWindow(window, SW_HIDE);
@@ -126,10 +133,80 @@ int main() {
 			ExitProcess(0);
 		}
 
+		kvk::Pipeline meshPipeline;
+		rc = kvk::PipelineBuilder()
+			.setColorAttachmentFormat(state.swapchainImageFormat.format)
+			.addPushConstantRange(VK_SHADER_STAGE_VERTEX_BIT, sizeof(kvk::PushConstants))
+			.setShaders(meshVertexShader, fragmentShader)
+			.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+			.setPolygonMode(VK_POLYGON_MODE_FILL)
+			.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE)
+			.setColorAttachmentFormat(state.drawImage.format)
+			.setDepthAttachmentFormat(state.depthImage.format)
+			.enableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
+			.build(meshPipeline, state.device);
+
 		state.isInitialized.store(true);
 
 		allow.store(true);
 		renderThreadMutex.unlock();
+
+		vkDestroyShaderModule(state.device,
+							  vertexShader,
+							  nullptr);
+
+		vkDestroyShaderModule(state.device,
+							  fragmentShader,
+							  nullptr);
+
+		vkDestroyShaderModule(state.device,
+							  meshVertexShader,
+							  nullptr);
+
+		kvk::Vertex vertices[] = {
+			{
+				.position = {0.5f, -0.5f, 0.0f},
+				.color = {0.0f, 0.0f, 0.0f, 0.1f},
+			},
+			{
+				.position = {0.5f, 0.5f, 0.0f},
+				.color = {0.5f, 0.5f, 0.5f, 0.1f},
+			},
+			{
+				.position = {-0.5f, -0.5f, 0.0f},
+				.color = {1.0f, 0.0f, 0.0f, 0.1f},
+			},
+			{
+				.position = {-0.5f, 0.5f, 0.0f},
+				.color = {0.0f, 1.0f, 0.0f, 0.1f},
+			},
+		};
+
+		std::uint32_t indices[] = { 0, 1, 2, 2, 1, 3 };
+
+		kvk::Mesh testMesh;
+		rc = kvk::createMesh(testMesh,
+							 state,
+							 std::span(indices, 6),
+							 std::span(vertices, 4));
+
+		if(rc != kvk::ReturnCode::OK) {
+			logError("could not load basicmesh.glb");
+			ShowWindow(window, SW_HIDE);
+			ExitProcess(1);
+		}
+
+		std::vector<kvk::MeshAsset> meshes;
+		rc = kvk::loadGltf(meshes,
+						   state,
+						   "assets/basicmesh.glb");
+
+		if(rc != kvk::ReturnCode::OK) {
+			logError("could not load basicmesh.glb");
+			ShowWindow(window, SW_HIDE);
+			ExitProcess(1);
+		}
+
 		while(true) {
 			if(!allow.load() || !state.swapchainExtent.width || !state.swapchainExtent.height) {
 				continue;
@@ -171,13 +248,28 @@ int main() {
 						  1,
 						  &frame.inFlightFence);
 
+			kvk::MeshAsset ass = {
+				.mesh = testMesh,
+				.surfaces = {
+					{
+						.startIndex = 0,
+						.count = 6
+					}
+				},
+			};
+
+			std::vector<kvk::MeshAsset> test {
+				ass
+			};
 			if(kvk::recordCommandBuffer(frame.commandBuffer,
-										state.drawImage.image,
-										state.drawImage.view,
+										state.drawImage,
+										state.depthImage,
 										state.swapchainExtent,
 										state.swapchainImages[imageIndex],
 										state.drawImageDescriptors,
-										pipeline) != kvk::ReturnCode::OK) {
+										pipeline,
+										meshPipeline,
+										meshes) != kvk::ReturnCode::OK) {
 				ShowWindow(window, SW_HIDE);
 				logError("Could not record commandBuffer");
 				ExitProcess(0);

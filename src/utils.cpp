@@ -244,4 +244,73 @@ namespace kvk {
 		vkCmdBlitImage2(cmd, &blitInfo);
 	}
 
+	VkResult immediateSubmit(VkCommandBuffer cmd,
+							 VkDevice device,
+							 VkQueue queue,
+							 std::function<void(VkCommandBuffer)>&& function) {
+		VkResult retval;
+		VkCommandBufferBeginInfo beginInfo = {
+			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+			.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+		};
+
+		VkFenceCreateInfo fenceCreateInfo = {
+			.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+		};
+		
+		VkFence fence;
+		retval = vkCreateFence(device,
+							   &fenceCreateInfo,
+							   nullptr,
+							   &fence);
+		if(retval != VK_SUCCESS) {
+			logError("Could not create fence");
+			return retval;
+		}
+
+		retval = vkBeginCommandBuffer(cmd,
+									  &beginInfo);
+		if(retval != VK_SUCCESS) {
+			logError("Could not start command buffer recording");
+			return retval;
+		}
+
+		function(cmd);
+
+		retval = vkEndCommandBuffer(cmd);
+		if(retval != VK_SUCCESS) {
+			logError("Could not end command buffer");
+			return retval;
+		}
+
+		const VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		
+		VkSubmitInfo submitInfo = {
+			.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+			.commandBufferCount = 1,
+			.pCommandBuffers = &cmd,
+		};
+
+		retval = vkQueueSubmit(queue,
+							   1,
+							   &submitInfo,
+							   fence);
+		if(retval != VK_SUCCESS) {
+			logError("Queue submit failed");
+			return retval;
+		}
+
+		vkWaitForFences(device,
+						1,
+						&fence,
+						VK_TRUE,
+						std::numeric_limits<std::uint64_t>::max());
+
+		vkDestroyFence(device,
+					   fence,
+					   nullptr);
+		
+		return retval;
+	}
+
 }

@@ -1,7 +1,11 @@
+#define VMA_IMPLEMENTATION
+#define GLM_ENABLE_EXPERIMENTAL
 #include "common.h"
 #include "renderer.h"
 #include "utils.h"
 
+#include <glm/gtx/transform.hpp>
+#include <glm/ext/matrix_transform.hpp>
 #include <fstream>
 #include <vector>
 #include <set>
@@ -9,6 +13,11 @@
 #include <algorithm>
 #include <bitset>
 #include <iostream>
+
+#include <fastgltf/glm_element_traits.hpp>
+#include <fastgltf/core.hpp>
+#include <fastgltf/tools.hpp>
+
 
 #if defined(_WIN32)
 #include "renderer_win32.h"
@@ -225,6 +234,7 @@ namespace kvk {
 				bool graphicsFamilyFound = false;
 				bool presentFamilyFound = false;
 				bool computeFamilyFound = false;
+				bool transferFamilyFound = false;
 
 				std::uint32_t extensionCount = 0;
 				vkEnumerateDeviceExtensionProperties(pd, nullptr, &extensionCount, nullptr);
@@ -259,6 +269,11 @@ namespace kvk {
 						graphicsFamilyFound = true;
 					}
 
+					if(!transferFamilyFound && qf.queueFlags & VK_QUEUE_TRANSFER_BIT) {
+						state.transferFamilyIndex = i;
+						transferFamilyFound = true;
+					}
+
 					if(!presentFamilyFound) {
 						VkBool32 presentSupport = false;
 						vkGetPhysicalDeviceSurfaceSupportKHR(pd, i, state.surface, &presentSupport);
@@ -276,10 +291,9 @@ namespace kvk {
 
 					i++;
 				}
-				if(!computeFamilyFound && !graphicsFamilyFound && !presentFamilyFound ) {
+				if(!transferFamilyFound && !computeFamilyFound && !graphicsFamilyFound && !presentFamilyFound ) {
 					continue;
 				}
-
 
 				std::uint32_t formatCount = 0;
 				vkGetPhysicalDeviceSurfaceFormatsKHR(pd, state.surface, &formatCount, nullptr);
@@ -359,6 +373,7 @@ namespace kvk {
 		CHECK_FEATURE(features13, synchronization2);
 		CHECK_FEATURE(features13, dynamicRendering);
 		CHECK_FEATURE(features12, bufferDeviceAddress);
+#undef CHECK_FEATURE
 
 		features13 = VkPhysicalDeviceVulkan13Features {
 			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
@@ -391,6 +406,11 @@ namespace kvk {
 			return ReturnCode::UNKNOWN;
 		}
 		logDebug("Logical device created");
+
+		vkGetDeviceQueue(state.device,
+						 state.transferFamilyIndex,
+						 0,
+						 &state.transferQueue);
 
 		vkGetDeviceQueue(state.device,
 						 state.graphicsFamilyIndex,
@@ -535,10 +555,9 @@ namespace kvk {
 			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
 			.commandPool = state.commandPool,
 			.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-			.commandBufferCount = MAX_IN_FLIGHT_FRAMES
+			.commandBufferCount = MAX_IN_FLIGHT_FRAMES + 4
 		};
-
-		VkCommandBuffer cBuffers[MAX_IN_FLIGHT_FRAMES];
+		VkCommandBuffer cBuffers[MAX_IN_FLIGHT_FRAMES + 4];
 
 		if(vkAllocateCommandBuffers(state.device,
 									&cbufferAllocInfo,
@@ -549,6 +568,10 @@ namespace kvk {
 
 		for(int i = 0; i != MAX_IN_FLIGHT_FRAMES; i++) {
 			state.frames[i].commandBuffer = cBuffers[i];
+		}
+
+		for(int i = MAX_IN_FLIGHT_FRAMES; i != MAX_IN_FLIGHT_FRAMES + 4; i++) {
+			state.transferCommandBuffers[i - MAX_IN_FLIGHT_FRAMES] = cBuffers[i];
 		}
 
 		VkSemaphoreCreateInfo semaphoreCreateInfo = {
@@ -571,10 +594,15 @@ namespace kvk {
 		return ReturnCode::OK;
 	}
 
-	void drawGeometry(VkCommandBuffer cmd,
-					  VkImageView drawImageView,
-					  VkExtent2D drawExtent,
-					  VkPipeline pipeline) {
+	static void drawGeometry(VkCommandBuffer cmd,
+							 VkImageView drawImageView,
+							 VkImageView depthImageView,
+							 VkExtent2D drawExtent,
+							 VkPipeline pipeline,
+							 VkPipelineLayout pipelineLayout,
+							 VkPipeline meshPipeline,
+							 VkPipelineLayout meshPipelineLayout,
+							 const std::vector<MeshAsset>& meshes) {
 		VkRenderingAttachmentInfo colorAttachment = {
 			.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 			.imageView = drawImageView,
@@ -586,6 +614,15 @@ namespace kvk {
 			},
 		};
 
+		VkRenderingAttachmentInfo depthAttachment = {
+			.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+			.imageView = depthImageView,
+			.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+			.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+			.clearValue =  { }, // 0 everything
+		};
+
 		VkRenderingInfo renderInfo = {
 			.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
 			.renderArea = { 
@@ -595,14 +632,16 @@ namespace kvk {
 			.layerCount = 1,
 			.colorAttachmentCount = 1,
 			.pColorAttachments = &colorAttachment,
-			.pDepthAttachment = nullptr,
+			.pDepthAttachment = &depthAttachment,
 			.pStencilAttachment = nullptr
 		};
 
+		vkCmdBindPipeline(cmd,
+						  VK_PIPELINE_BIND_POINT_GRAPHICS,
+						  meshPipeline);
+
 		vkCmdBeginRendering(cmd,
 							&renderInfo);
-
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
 		VkViewport viewport = {
 			.x = 0,
@@ -623,17 +662,50 @@ namespace kvk {
 		};
 
 		vkCmdSetScissor(cmd, 0, 1, &scissor);
-		vkCmdDraw(cmd, 3, 1, 0, 0);
+
+		static PushConstants pc = {};
+		static glm::mat4 view = glm::translate(glm::vec3{ 0,0, -5});
+		view = glm::rotate(view, 0.01f, glm::vec3(0, 1, 1));
+		// camera projection
+		glm::mat4 projection = glm::perspective(glm::radians(45.f), (float)drawExtent.width / (float)drawExtent.height, 0.1f, 1000.0f);
+
+		// invert the Y direction on projection matrix so that we are more similar
+		// to opengl and gltf axis
+		projection[1][1] *= -1;
+		pc.worldMatrix = projection * view;
+
+		const MeshAsset& asset = meshes[2];
+		pc.vertexBuffer = asset.mesh.vertexBufferAddress;
+		vkCmdPushConstants(cmd,
+						   meshPipelineLayout,
+						   VK_SHADER_STAGE_VERTEX_BIT,
+						   0,
+						   sizeof(pc),
+						   &pc);
+		vkCmdBindIndexBuffer(cmd,
+							 asset.mesh.indices.buffer,
+							 0,
+							 VK_INDEX_TYPE_UINT32);
+
+		vkCmdDrawIndexed(cmd,
+						 asset.surfaces[0].count,
+						 1,
+						 asset.surfaces[0].startIndex,
+						 0,
+						 0);
+
 		vkCmdEndRendering(cmd);
 	}
 
 	ReturnCode recordCommandBuffer(VkCommandBuffer commandBuffer,
-								   VkImage drawImage,
-								   VkImageView drawImageView,
+								   AllocatedImage& drawImage,
+								   AllocatedImage& depthImage,
 								   const VkExtent2D& extent,
 								   VkImage image,
 								   VkDescriptorSet drawImageDescriptors,
-								   const Pipeline& pipeline) {
+								   const Pipeline& pipeline,
+								   const Pipeline& meshPipeline,
+								   const std::vector<MeshAsset>& meshes) {
 
 		vkResetCommandBuffer(commandBuffer, 0);
 		VkCommandBufferBeginInfo beginInfo = {
@@ -646,26 +718,36 @@ namespace kvk {
 		}
 
 		transitionImage(commandBuffer,
-						drawImage,
+						drawImage.image,
 						VK_IMAGE_LAYOUT_UNDEFINED,
 						VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
+		transitionImage(commandBuffer,
+						depthImage.image,
+						VK_IMAGE_LAYOUT_UNDEFINED,
+						VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+
 		drawGeometry(commandBuffer,
-					 drawImageView,
+					 drawImage.view,
+					 depthImage.view,
 					 extent,
-					 pipeline.pipeline);
+					 pipeline.pipeline,
+					 pipeline.layout,
+					 meshPipeline.pipeline,
+					 meshPipeline.layout,
+					 meshes);
 
 		transitionImage(commandBuffer,
 						image,
 						VK_IMAGE_LAYOUT_UNDEFINED,
 						VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 		transitionImage(commandBuffer,
-						drawImage,
+						drawImage.image,
 						VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 						VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
 		blitImageToImage(commandBuffer,
-						 drawImage,
+						 drawImage.image,
 						 image,
 						 extent,
 						 extent);
@@ -784,41 +866,34 @@ namespace kvk {
 			1
 		};
 
-		state.drawImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-		state.drawImage.extent = drawImageExtent;
-		VkImageUsageFlags drawImageUsage = 
-			VK_IMAGE_USAGE_TRANSFER_DST_BIT | 
-			VK_IMAGE_USAGE_TRANSFER_SRC_BIT | 
-			VK_IMAGE_USAGE_STORAGE_BIT | 
-			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+		ReturnCode rc;
 
-		VkImageCreateInfo drawImageCreateInfo = imageCreateInfo(state.physicalDevice,
-																state.drawImage.format,
-																drawImageUsage,
-																drawImageExtent);
+		rc = createImage(state.depthImage,
+						 state,
+						 VK_FORMAT_D32_SFLOAT,
+						 drawImageExtent,
+						 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+						 VK_IMAGE_ASPECT_DEPTH_BIT);
 
-		VmaAllocationCreateInfo drawImageAllocInfo = {
-			.usage = VMA_MEMORY_USAGE_GPU_ONLY,
-			.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-		};
-
-		vmaCreateImage(state.allocator,
-					   &drawImageCreateInfo,
-					   &drawImageAllocInfo,
-					   &state.drawImage.image,
-					   &state.drawImage.allocation,
-					   nullptr);
-
-		VkImageViewCreateInfo drawImageViewInfo = imageViewCreateInfo(VK_FORMAT_R16G16B16A16_SFLOAT,
-																	  state.drawImage.image,
-																	  VK_IMAGE_ASPECT_COLOR_BIT);
-		if(vkCreateImageView(state.device,
-							 &drawImageViewInfo,
-							 nullptr,
-							 &state.drawImage.view) != VK_SUCCESS) {
-			logError("Could not create draw image");
-			return ReturnCode::UNKNOWN;
+		if(rc != ReturnCode::OK) {
+			logError("Could not create depth image");
+			return rc;
 		}
+
+		rc = createImage(state.drawImage,
+						 state,
+						 VK_FORMAT_R16G16B16A16_SFLOAT,
+						 drawImageExtent,
+						 VK_IMAGE_USAGE_TRANSFER_DST_BIT | 
+						 VK_IMAGE_USAGE_TRANSFER_SRC_BIT | 
+						 VK_IMAGE_USAGE_STORAGE_BIT | 
+						 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+						 VK_IMAGE_ASPECT_COLOR_BIT);
+		if(rc != ReturnCode::OK) {
+			logError("Could not create draw image");
+			return rc;
+		}
+
 		VkDescriptorImageInfo imageInfo = {
 			.imageView = state.drawImage.view,
 			.imageLayout = VK_IMAGE_LAYOUT_GENERAL,
@@ -842,7 +917,6 @@ namespace kvk {
 	}
 
 	ReturnCode recreateSwapchain(RendererState& state,
-								 Pipeline& pipeline,
 								 const std::uint32_t x,
 								 const std::uint32_t y) {
 		vkDeviceWaitIdle(state.device);
@@ -960,6 +1034,25 @@ namespace kvk {
 		};
 	}
 
+	PipelineBuilder& PipelineBuilder::enableDepthTest(bool depthWriteEnable, VkCompareOp op) {
+		depthStencil.depthTestEnable = VK_TRUE;
+		depthStencil.depthWriteEnable = depthWriteEnable;
+		depthStencil.depthCompareOp = op;
+		depthStencil.depthBoundsTestEnable = VK_FALSE;
+		depthStencil.stencilTestEnable = VK_FALSE;
+		depthStencil.front = {};
+		depthStencil.back = {};
+		depthStencil.minDepthBounds = 0.f;
+		depthStencil.maxDepthBounds = 1.f;
+		return *this;
+	}
+
+	PipelineBuilder& PipelineBuilder::addPushConstantRange(VkShaderStageFlags stage, std::uint32_t size, std::uint32_t offset) {
+		pushConstantRanges.emplace_back(stage, offset, size);
+		return *this;
+	}
+
+
 	PipelineBuilder& PipelineBuilder::setShaders(VkShaderModule vertexShader, VkShaderModule fragmentShader) {
 		shaderStages.clear();
 		VkPipelineShaderStageCreateInfo vs = {
@@ -1004,12 +1097,10 @@ namespace kvk {
 	}
 
 	PipelineBuilder& PipelineBuilder::setDepthAttachmentFormat(VkFormat format) {
-		depthAttachmentFormat = format;
+		renderInfo.depthAttachmentFormat = format;
 		return *this;
 	}
 	
-	
-
 	ReturnCode PipelineBuilder::build(Pipeline& pipeline,
 									  const VkDevice device) {
 		VkPipelineLayoutCreateInfo layoutCreateInfo = {
@@ -1059,15 +1150,299 @@ namespace kvk {
 			return ReturnCode::UNKNOWN;
 		}
 
-		for(auto stage : shaderStages) {
-			vkDestroyShaderModule(device, 
-								  stage.module,
-								  nullptr);
-
-		}
-
 		logDebug("Created pipeline");
 		return ReturnCode::OK;
 	}
+
+	ReturnCode createBuffer(AllocatedBuffer& buffer,
+							VmaAllocator allocator,
+							std::uint64_t size,
+							VkBufferUsageFlags bufferUsage,
+							VmaMemoryUsage memoryUsage) {
+		VkBufferCreateInfo bufferCreateInfo = {
+			.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+			.size = size,
+			.usage = bufferUsage,
+		};
+
+		VmaAllocationCreateInfo allocInfo = {
+			.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
+			.usage = memoryUsage,
+		};
+
+		if(vmaCreateBuffer(allocator,
+						   &bufferCreateInfo,
+						   &allocInfo,
+						   &buffer.buffer,
+						   &buffer.allocation,
+						   &buffer.info) != VK_SUCCESS) {
+			logError("Could not allocate buffer");
+			return ReturnCode::UNKNOWN;
+		}
+		return ReturnCode::OK;
+	}
+
+	void destroyBuffer(AllocatedBuffer& buffer,
+					   VmaAllocator allocator) {
+		vmaDestroyBuffer(allocator,
+						 buffer.buffer,
+						 buffer.allocation);
+	}
+
+	ReturnCode createMesh(Mesh& mesh,
+						  RendererState& state,
+						  std::span<std::uint32_t> indices, 
+						  std::span<Vertex> vertices) {
+		const std::uint64_t vertexBufferSize = vertices.size() * sizeof(Vertex);
+		const std::uint64_t indexBufferSize = indices.size() * sizeof(std::uint32_t);
+		ReturnCode rc;
+
+		rc = createBuffer(mesh.vertices,
+						  state.allocator,
+						  vertexBufferSize,
+						  VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | 
+						  VK_BUFFER_USAGE_TRANSFER_DST_BIT | 
+						  VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+						  VMA_MEMORY_USAGE_GPU_ONLY);
+
+		if(rc != ReturnCode::OK) {
+			return rc;
+		}
+
+		VkBufferDeviceAddressInfo deviceAddressInfo = {
+			.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+			.buffer = mesh.vertices.buffer
+		};
+		
+		mesh.vertexBufferAddress = vkGetBufferDeviceAddress(state.device,
+															&deviceAddressInfo);
+
+		rc = createBuffer(mesh.indices,
+						  state.allocator,
+						  indexBufferSize,
+						  VK_BUFFER_USAGE_INDEX_BUFFER_BIT | 
+						  VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+						  VMA_MEMORY_USAGE_GPU_ONLY);
+
+		if(rc != ReturnCode::OK) {
+			return rc;
+		}
+
+		AllocatedBuffer stagingBuffer;
+		rc = createBuffer(stagingBuffer,
+						  state.allocator,
+						  vertexBufferSize + indexBufferSize,
+						  VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+						  VMA_MEMORY_USAGE_CPU_ONLY);
+
+		if(rc != ReturnCode::OK) {
+			return rc;
+		}
+
+		void* data = stagingBuffer.allocation->GetMappedData();
+		memcpy(data, vertices.data(), vertexBufferSize);
+		memcpy((char*)data + vertexBufferSize, indices.data(), indexBufferSize);
+
+		auto transferFunc = [&](VkCommandBuffer cmd) {
+			VkBufferCopy vertexCopy{ 0 };
+			vertexCopy.dstOffset = 0;
+			vertexCopy.srcOffset = 0;
+			vertexCopy.size = vertexBufferSize;
+
+			vkCmdCopyBuffer(cmd,
+							stagingBuffer.buffer,
+							mesh.vertices.buffer,
+							1,
+							&vertexCopy);
+
+			VkBufferCopy indexCopy{ 0 };
+			indexCopy.dstOffset = 0;
+			indexCopy.srcOffset = vertexBufferSize;
+			indexCopy.size = indexBufferSize;
+
+			vkCmdCopyBuffer(cmd,
+							stagingBuffer.buffer,
+							mesh.indices.buffer,
+							1,
+							&indexCopy);
+
+		};
+
+		VkResult res = immediateSubmit(state.transferCommandBuffers[0],
+									   state.device,
+									   state.transferQueue,
+									   transferFunc);
+
+		if(res != VK_SUCCESS) {
+			logError("Immediate submit failed: %d", res);
+			return ReturnCode::UNKNOWN;
+		}
+
+		destroyBuffer(stagingBuffer,
+					  state.allocator);
+
+		return ReturnCode::OK;
+	}
+
+	ReturnCode loadGltf(std::vector<MeshAsset>& retval,
+						RendererState& state,
+						const char* pth) {
+		std::filesystem::path filePath = pth;
+		auto data = fastgltf::GltfDataBuffer::FromPath(filePath);
+		 
+		fastgltf::Asset gltf;
+		fastgltf::Parser parser;
+
+		auto load = parser.loadGltfBinary(data.get(),
+										  filePath.parent_path(),
+										  fastgltf::Options::LoadGLBBuffers |
+										  fastgltf::Options::LoadExternalBuffers);
+
+		if(load) {
+			gltf = std::move(load.get());
+		} else {
+			logError("fuck");
+			return ReturnCode::UNKNOWN;
+		}
+
+		retval.reserve(gltf.meshes.size());
+
+		std::vector<std::uint32_t> indices;
+		std::vector<Vertex> vertices;
+
+		for(fastgltf::Mesh& mesh : gltf.meshes) {
+			retval.emplace_back();
+			MeshAsset& newMesh = retval.back();
+			logInfo("loading %s", mesh.name.c_str());
+			
+			indices.clear();
+			vertices.clear();
+
+			newMesh.surfaces.reserve(mesh.primitives.size());
+			for(auto& p : mesh.primitives) {
+				GeoSurface newSurface;
+				newSurface.startIndex = indices.size();
+				newSurface.count = gltf.accessors[p.indicesAccessor.value()].count;
+				newMesh.surfaces.emplace_back(newSurface);
+
+				std::uint32_t initialVertex = vertices.size();
+				// load indices
+				{
+					fastgltf::Accessor& indexAccessor = gltf.accessors[p.indicesAccessor.value()];
+					fastgltf::iterateAccessor<std::uint32_t>(gltf,
+															 indexAccessor,
+															 [&](size_t index) {
+																 indices.push_back(static_cast<std::uint32_t>(index + initialVertex));
+															 });
+				}
+
+				// load vertices
+				{
+					fastgltf::Accessor& vertexAccessor = gltf.accessors[p.findAttribute("POSITION")->accessorIndex];
+					vertices.resize(vertexAccessor.count + vertices.size());
+					fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf,
+																  vertexAccessor,
+																  [&](glm::vec3 v, size_t index) {
+																	  Vertex& vertex = vertices[index + initialVertex];
+																	  vertex.position = v;
+																	  vertex.normal = {1, 0, 0};
+																	  vertex.color = glm::vec4{1.0f, 1.0f, 1.0f, 1.0f};
+																	  vertex.uvX = 0.0f;
+																	  vertex.uvY = 0.0f;
+																  });
+				}
+
+				// load normals
+				{
+					fastgltf::Accessor& normalAccessor = gltf.accessors[p.findAttribute("NORMAL")->accessorIndex];
+					fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf,
+																  normalAccessor,
+																  [&](glm::vec3 v, size_t index) {
+																	  vertices[index + initialVertex].normal = v;
+																  });
+				}
+
+				// load colors
+				{
+					auto ind = p.findAttribute("COLOR_0");
+					if(ind != p.attributes.end()) {
+						auto normalAccessor = gltf.accessors[ind->accessorIndex];
+						fastgltf::iterateAccessorWithIndex<glm::vec4>(gltf,
+																	  normalAccessor,
+																	  [&](glm::vec4 v, size_t index) {
+																		  vertices[index + initialVertex].color = v;
+																	  });
+					}
+				}
+
+				// load UV
+				{
+					auto ind = p.findAttribute("TEXCOORD_0");
+					if(ind != p.attributes.end()) {
+						fastgltf::Accessor& normalAccessor = gltf.accessors[ind->accessorIndex];
+						fastgltf::iterateAccessorWithIndex<glm::vec2>(gltf,
+																	  normalAccessor,
+																	  [&](glm::vec2 v, size_t index) {
+																		  vertices[index + initialVertex].uvX = v.x;
+																		  vertices[index + initialVertex].uvY = v.y;
+																	  });
+					}
+				}
+			}
+			for(Vertex & v : vertices) {
+				v.color = glm::vec4(v.normal, 1.0f);
+			}
+			ReturnCode rc = createMesh(newMesh.mesh,
+									   state,
+									   indices,
+									   vertices);
+			if(rc != ReturnCode::OK) {
+				logError("fml");
+				return rc;
+			}
+		}
+		return ReturnCode::OK;
+	}
+
+	ReturnCode createImage(AllocatedImage& image,
+						   RendererState& state,
+						   const VkFormat format,
+						   const VkExtent3D extent,
+						   const VkImageUsageFlags usageFlags,
+						   const VkImageAspectFlags aspectFlags) {
+
+		VkImageCreateInfo imageInfo = imageCreateInfo(state.physicalDevice,
+															format,
+															usageFlags,
+															extent);
+
+		VmaAllocationCreateInfo imageAllocInfo = {
+			.usage = VMA_MEMORY_USAGE_GPU_ONLY,
+			.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		};
+
+		vmaCreateImage(state.allocator,
+					   &imageInfo,
+					   &imageAllocInfo,
+					   &image.image,
+					   &image.allocation,
+					   nullptr);
+
+		VkImageViewCreateInfo imageViewInfo = imageViewCreateInfo(format,
+																  image.image,
+																  aspectFlags);
+		if(vkCreateImageView(state.device,
+							 &imageViewInfo,
+							 nullptr,
+							 &image.view) != VK_SUCCESS) {
+			logError("Could not create draw image");
+			return ReturnCode::UNKNOWN;
+		}
+		image.format = format;
+		image.extent = extent;
+
+		return ReturnCode::OK;
+	}
+
 
 }

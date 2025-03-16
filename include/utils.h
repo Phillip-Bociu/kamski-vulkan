@@ -1,13 +1,17 @@
 #pragma once
 #include <vulkan/vulkan.h>
 #include <cstdint>
+#include <functional>
+
 #include "common.h"
 
 namespace kvk {
+
 	/*=====================================
 	  Struct fillers
 	  =====================================*/
 	VkImageSubresourceRange imageSubresourceRange(VkImageAspectFlags aspectMask);
+
 	VkImageCreateInfo imageCreateInfo(VkPhysicalDevice physicalDevice,
 									  VkFormat format,
 									  VkImageUsageFlags usageFlags,
@@ -16,6 +20,7 @@ namespace kvk {
 	VkImageViewCreateInfo imageViewCreateInfo(VkFormat format,
 											  VkImage image,
 											  VkImageAspectFlags aspectFlags);
+
 	VkDescriptorSetLayoutBinding descriptorSetLayoutBinding(std::uint32_t binding,
 															VkDescriptorType type);
 
@@ -38,9 +43,15 @@ namespace kvk {
 									 VkDescriptorPool pool,
 									 VkDevice device,
 									 VkDescriptorSetLayout layout);
+
 	/*=====================================
 	  Commands
 	  =====================================*/
+	VkResult immediateSubmit(VkCommandBuffer cmd,
+							 VkDevice device,
+							 VkQueue queue,
+							 std::function<void(VkCommandBuffer)>&& function);
+
 	void transitionImage(VkCommandBuffer cmd,
 						 VkImage image,
 						 VkImageLayout currentLayout,

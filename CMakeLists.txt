@@ -13,6 +13,7 @@ IF(KVK_DEBUG MATCHES ON)
 	message("DEBUG BUILD")
 	set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
 	add_compile_definitions(KVK_DEBUG)
+	add_compile_options(/Zi)
 	set(CMAKE_BUILD_TYPE Debug)
 ELSE(KVK_DEBUG MATCHES ON)
 	message("RELEASE BUILD")
@@ -28,7 +29,8 @@ ELSE(KVK_DEBUG MATCHES ON)
 ENDIF(KVK_DEBUG MATCHES ON)
 
 add_subdirectory(vma)
-
+add_subdirectory(glm)
+add_subdirectory(fastgltf)
 # Globs
 
 file(GLOB_RECURSE LIB_CPP_FILES "src/*cpp")
@@ -41,7 +43,7 @@ file(GLOB_RECURSE GLSL_SOURCE_FILES
 
 add_library(kamskiVk STATIC ${LIB_CPP_FILES})
 target_link_directories(kamskiVk PUBLIC $ENV{VULKAN_SDK}/Lib/)
-target_link_libraries(kamskiVk PUBLIC vulkan-1 VulkanMemoryAllocator)
+target_link_libraries(kamskiVk PUBLIC vulkan-1 VulkanMemoryAllocator glm-header-only fastgltf)
 target_include_directories(kamskiVk PUBLIC ${CMAKE_SOURCE_DIR}/include/ $ENV{VULKAN_SDK}/Include/)
 
 # SPIR-V compilation

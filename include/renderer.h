@@ -83,7 +83,10 @@ namespace kvk {
 		PipelineBuilder& setCullMode(VkCullModeFlags cullMode, VkFrontFace face);
 		PipelineBuilder& setColorAttachmentFormat(VkFormat format);
 		PipelineBuilder& setDepthAttachmentFormat(VkFormat format);
+
 		PipelineBuilder& enableDepthTest(bool depthWriteEnable, VkCompareOp op);
+		PipelineBuilder& enableBlendingAdditive();
+		PipelineBuilder& enableBlendingAlpha();
 
 		PipelineBuilder& addPushConstantRange(VkShaderStageFlags stage,
 											  std::uint32_t size,

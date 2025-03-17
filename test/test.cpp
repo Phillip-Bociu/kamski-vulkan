@@ -144,6 +144,7 @@ int main() {
 			.setColorAttachmentFormat(state.drawImage.format)
 			.setDepthAttachmentFormat(state.depthImage.format)
 			.enableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
+			.enableBlendingAlpha()
 			.build(meshPipeline, state.device);
 
 		state.isInitialized.store(true);

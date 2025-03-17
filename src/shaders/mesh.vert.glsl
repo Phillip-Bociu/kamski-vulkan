@@ -16,7 +16,9 @@ layout(buffer_reference, std430) readonly buffer VertexBuffer {
 };
 
 layout( push_constant ) uniform constants {
-	mat4 render_matrix;
+	mat4 proj;
+	mat4 view;
+	mat4 model;
 	VertexBuffer vertexBuffer;
 } PushConstants;
 
@@ -25,7 +27,7 @@ void main() {
 	Vertex v = PushConstants.vertexBuffer.vertices[gl_VertexIndex];
 
 	//output data
-	gl_Position = PushConstants.render_matrix * vec4(v.position, 1.0f);
+	gl_Position = PushConstants.proj * PushConstants.view  * PushConstants.model * vec4(v.position, 1.0f);
 	outColor = v.color.rgb;
 }
 

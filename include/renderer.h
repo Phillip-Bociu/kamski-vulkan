@@ -111,7 +111,9 @@ namespace kvk {
 	};
 
 	struct PushConstants {
-		glm::mat4 worldMatrix;
+		glm::mat4 proj;
+		glm::mat4 view ;
+		glm::mat4 model;
 		VkDeviceAddress vertexBuffer;
 	};
 

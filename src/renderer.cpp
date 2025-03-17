@@ -11,8 +11,6 @@
 #include <set>
 #include <numeric>
 #include <algorithm>
-#include <bitset>
-#include <iostream>
 
 #include <fastgltf/glm_element_traits.hpp>
 #include <fastgltf/core.hpp>
@@ -610,7 +608,7 @@ namespace kvk {
 			.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
 			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 			.clearValue =  {
-				0.0f, 0.0f, 0.0f, 1.0f
+				.color = { 0.0f, 0.0f, 0.0f, 1.0f },
 			},
 		};
 
@@ -620,7 +618,11 @@ namespace kvk {
 			.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
 			.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
 			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-			.clearValue =  { }, // 0 everything
+			.clearValue =  {
+				.depthStencil =  {
+					.depth = 0.0f
+				},
+			}, 
 		};
 
 		VkRenderingInfo renderInfo = {
@@ -663,17 +665,26 @@ namespace kvk {
 
 		vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-		static PushConstants pc = {};
-		static glm::mat4 view = glm::translate(glm::vec3{ 0,0, -5});
-		view = glm::rotate(view, 0.01f, glm::vec3(0, 1, 1));
+		auto makeInfReversedZProjRH = [](float fovY_radians, float aspectWbyH, float zNear) -> glm::mat4 {
+			float f = 1.0f / tan(fovY_radians / 2.0f);
+			return glm::mat4(
+				f / aspectWbyH, 0.0f,  0.0f,  0.0f,
+				0.0f,    f,  0.0f,  0.0f,
+				0.0f, 0.0f,  0.0f, -1.0f,
+				0.0f, 0.0f, zNear,  0.0f);
+		};
+
+		PushConstants pc = {
+			.proj = makeInfReversedZProjRH(glm::radians(45.f), (float)drawExtent.width / (float)drawExtent.height, 0.1f),
+			.view = glm::translate(glm::mat4(1.0f), glm::vec3{ 0,0, -5}),
+		};
+		pc.proj[1][1] *= -1;
+
+		static glm::mat4 model = glm::mat4(1.0f);
+		model = glm::rotate(model, glm::radians(1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+		pc.model = model;
+		
 		// camera projection
-		glm::mat4 projection = glm::perspective(glm::radians(45.f), (float)drawExtent.width / (float)drawExtent.height, 0.1f, 1000.0f);
-
-		// invert the Y direction on projection matrix so that we are more similar
-		// to opengl and gltf axis
-		projection[1][1] *= -1;
-		pc.worldMatrix = projection * view;
-
 		const MeshAsset& asset = meshes[2];
 		pc.vertexBuffer = asset.mesh.vertexBufferAddress;
 		vkCmdPushConstants(cmd,

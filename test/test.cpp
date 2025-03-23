@@ -1,4 +1,5 @@
 #include "renderer.h"
+#include "vulkan/vulkan_core.h"
 #include <kvk.h>
 #include <cstdint>
 #include <Windows.h>
@@ -93,10 +94,10 @@ int main() {
 			ExitProcess(1);
 		}
 
-		VkShaderModule vertexShader;
-		rc = kvk::createShaderModuleFromFile(vertexShader,
+		VkShaderModule solidColorFragmentShader;
+		rc = kvk::createShaderModuleFromFile(solidColorFragmentShader,
 											 state.device,
-											 "../shaders/simple_shader.vert.glsl.spv");
+											 "../shaders/solid_color.frag.glsl.spv");
 		if(rc != kvk::ReturnCode::OK) {
 			ExitProcess(1);
 		}
@@ -127,6 +128,24 @@ int main() {
 			.setColorAttachmentFormat(state.drawImage.format)
 			.setDepthAttachmentFormat(state.depthImage.format)
 			.enableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
+			.enableStencilTest(VK_COMPARE_OP_ALWAYS)
+			.enableBlendingAlpha()
+			.addPushConstantRange(VK_SHADER_STAGE_VERTEX_BIT, sizeof(kvk::PushConstants))
+			.addDescriptorSetLayout(state.sceneDescriptorLayout)
+			.addDescriptorSetLayout(state.samplerDescriptorLayout)
+			.build(meshPipeline, state.device);
+
+		kvk::Pipeline outlinePipeline;
+		rc = kvk::PipelineBuilder()
+			.setColorAttachmentFormat(state.swapchainImageFormat.format)
+			.setShaders(meshVertexShader, fragmentShader)
+			.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+			.setPolygonMode(VK_POLYGON_MODE_FILL)
+			.setCullMode(VK_CULL_MODE_FRONT_BIT, VK_FRONT_FACE_CLOCKWISE)
+			.setColorAttachmentFormat(state.drawImage.format)
+			.setDepthAttachmentFormat(state.depthImage.format)
+			.enableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
+			.enableStencilTest(VK_COMPARE_OP_NOT_EQUAL)
 			.enableBlendingAlpha()
 			.addPushConstantRange(VK_SHADER_STAGE_VERTEX_BIT, sizeof(kvk::PushConstants))
 			.addDescriptorSetLayout(state.sceneDescriptorLayout)
@@ -139,10 +158,6 @@ int main() {
 		renderThreadMutex.unlock();
 
 		vkDestroyShaderModule(state.device,
-							  vertexShader,
-							  nullptr);
-
-		vkDestroyShaderModule(state.device,
 							  fragmentShader,
 							  nullptr);
 
@@ -153,7 +168,7 @@ int main() {
 		std::vector<kvk::MeshAsset> meshes;
 		rc = kvk::loadGltf(meshes,
 						   state,
-						   "../assets/structure.glb");
+						   "../assets/monkey.glb");
 
 		if(rc != kvk::ReturnCode::OK) {
 			logError("could not load basicmesh.glb");

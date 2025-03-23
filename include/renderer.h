@@ -155,6 +155,7 @@ namespace kvk {
 		PipelineBuilder& setDepthAttachmentFormat(VkFormat format);
 
 		PipelineBuilder& enableDepthTest(bool depthWriteEnable, VkCompareOp op);
+		PipelineBuilder& enableStencilTest(VkCompareOp compareOp);
 		PipelineBuilder& enableBlendingAdditive();
 		PipelineBuilder& enableBlendingAlpha();
 

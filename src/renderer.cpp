@@ -594,10 +594,13 @@ namespace kvk {
 		}
 
         const uint32_t magenta = glm::packUnorm4x8(glm::vec4(1, 0, 1, 1));
+        const uint32_t black = glm::packUnorm4x8(glm::vec4(0, 0, 0, 1));
+        const uint32_t white = glm::packUnorm4x8(glm::vec4(1, 1, 1, 1));
         std::uint32_t pixels[16 * 16];
         for(std::uint32_t y = 0; y != 16; y++) {
             for(std::uint32_t x = 0; x != 16; x++) {
-                pixels[y * 16 + x] = (x & 1) ^ (y & 1) * magenta;
+                //pixels[y * 16 + x] = ((x & 1) ^ (y & 1)) ? magenta : black;
+                pixels[y * 16 + x] = white;
             }
         }
 
@@ -620,6 +623,16 @@ namespace kvk {
         };
         VK_CHECK(vkCreateSampler(state.device, &samplerCreateInfo, nullptr, &state.sampler));
 
+        VK_CHECK(immediateSubmit(state.transferCommandBuffers[0],
+	                    state.device,
+						state.transferQueue,
+						[&](VkCommandBuffer cmd) {
+			transitionImage(cmd,
+							state.depthImage.image,
+							VK_IMAGE_LAYOUT_UNDEFINED,
+							VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+		}));
+
 		return ReturnCode::OK;
 	}
 
@@ -629,7 +642,6 @@ namespace kvk {
 					     const VkExtent2D& extent,
 					     const Pipeline& meshPipeline,
 					     const std::vector<MeshAsset>& meshes) {
-
 		vkResetCommandBuffer(frame.commandBuffer, 0);
 		VkCommandBufferBeginInfo beginInfo = {
 			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -645,12 +657,6 @@ namespace kvk {
 						VK_IMAGE_LAYOUT_UNDEFINED,
 						VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
-		transitionImage(frame.commandBuffer,
-						state.depthImage.image,
-						VK_IMAGE_LAYOUT_UNDEFINED,
-						VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
-
-
 		VkRenderingAttachmentInfo colorAttachment = {
 			.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 			.imageView = state.drawImage.view,
@@ -658,14 +664,14 @@ namespace kvk {
 			.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
 			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 			.clearValue =  {
-				.color = { 0.0f, 0.0f, 0.0f, 1.0f },
+				.color = { 1.0f, 0.0f, 0.0f, 1.0f },
 			},
 		};
 
 		VkRenderingAttachmentInfo depthAttachment = {
 			.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 			.imageView = state.depthImage.view,
-			.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+			.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 			.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
 			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 			.clearValue =  {
@@ -820,16 +826,17 @@ namespace kvk {
 						image,
 						VK_IMAGE_LAYOUT_UNDEFINED,
 						VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
 		transitionImage(frame.commandBuffer,
 						state.drawImage.image,
 						VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 						VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
 		blitImageToImage(frame.commandBuffer,
-						 state.drawImage.image,
-						 image,
-						 extent,
-						 extent);
+ 						 state.drawImage.image,
+ 						 image,
+ 						 extent,
+ 						 extent);
 
 		transitionImage(frame.commandBuffer,
 						image,
@@ -947,7 +954,7 @@ namespace kvk {
 
 		rc = createImage(state.depthImage,
 						 state,
-						 VK_FORMAT_D32_SFLOAT,
+						 VK_FORMAT_D24_UNORM_S8_UINT,
 						 drawImageExtent,
 						 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
 
@@ -1001,13 +1008,19 @@ namespace kvk {
 			chosenExtent.height = std::clamp(y, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
 		}
 
-
 		vkDestroyImageView(state.device,
 						   state.drawImage.view,
 						   nullptr);
 		vmaDestroyImage(state.allocator,
 						state.drawImage.image,
 						state.drawImage.allocation);
+
+		vkDestroyImageView(state.device,
+						   state.depthImage.view,
+						   nullptr);
+		vmaDestroyImage(state.allocator,
+						state.depthImage.image,
+						state.depthImage.allocation);
 
 		ReturnCode rc = createSwapchain(state,
 										chosenExtent,
@@ -1018,6 +1031,16 @@ namespace kvk {
 		vkDestroySwapchainKHR(state.device,
 							  oldSwapchain,
 							  nullptr);
+
+		VK_CHECK(immediateSubmit(state.transferCommandBuffers[0],
+		                         state.device,
+		                         state.transferQueue,
+		                         [&](VkCommandBuffer cmd) {
+    		                         transitionImage(cmd,
+        		                                     state.depthImage.image,
+        		                                     VK_IMAGE_LAYOUT_UNDEFINED,
+        		                                     VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+		                         }));
 		return rc;
 	}
 
@@ -1119,13 +1142,26 @@ namespace kvk {
 		depthStencil.depthWriteEnable = depthWriteEnable;
 		depthStencil.depthCompareOp = op;
 		depthStencil.depthBoundsTestEnable = VK_FALSE;
-		depthStencil.stencilTestEnable = VK_FALSE;
-		depthStencil.front = {};
-		depthStencil.back = {};
 		depthStencil.minDepthBounds = 0.f;
 		depthStencil.maxDepthBounds = 1.f;
 		return *this;
 	}
+
+	PipelineBuilder& PipelineBuilder::enableStencilTest(VkCompareOp compareOp) {
+    	depthStencil.stencilTestEnable = VK_TRUE;
+    	depthStencil.back = {
+    	    .failOp = VK_STENCIL_OP_KEEP,
+    	    .passOp = VK_STENCIL_OP_REPLACE,
+    		.depthFailOp = VK_STENCIL_OP_KEEP,
+    		.compareOp = compareOp,
+    		.compareMask = 0xff,
+    		.writeMask = 0xff,
+    		.reference = 1
+    	};
+    	depthStencil.front = {};
+        return *this;
+	}
+
 
 	PipelineBuilder& PipelineBuilder::addPushConstantRange(VkShaderStageFlags stage, std::uint32_t size, std::uint32_t offset) {
 		pushConstantRanges.emplace_back(stage, offset, size);
@@ -1509,8 +1545,20 @@ namespace kvk {
 					   &image.image,
 					   &image.allocation,
 					   nullptr);
+		VkImageAspectFlags aspect;
+		switch(format) {
+		    case VK_FORMAT_D24_UNORM_S8_UINT: {
+				aspect = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+			} break;
 
-		const VkImageAspectFlags aspect = ((format == VK_FORMAT_D32_SFLOAT) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT);
+			case VK_FORMAT_D32_SFLOAT: {
+			    aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
+			} break;
+
+			default: {
+		        aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+			} break;
+		}
 		VkImageViewCreateInfo imageViewInfo = imageViewCreateInfo(format,
 																  image.image,
 																  aspect);

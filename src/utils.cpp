@@ -110,7 +110,15 @@ namespace kvk {
 		imageBarrier.oldLayout = currentLayout;
 		imageBarrier.newLayout = newLayout;
 
-		VkImageAspectFlags aspectMask = (newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+		VkImageAspectFlags aspectMask;
+		if(newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL) {
+		    aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+		} else if(newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+		    aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+		} else {
+		    aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		}
+
 		imageBarrier.subresourceRange = imageSubresourceRange(aspectMask);
 		imageBarrier.image = image;
 
@@ -135,35 +143,6 @@ namespace kvk {
 			.tiling = VK_IMAGE_TILING_OPTIMAL,
 			.usage = usageFlags,
 		};
-		VkImageFormatProperties2 props {
-			.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2,
-			.imageFormatProperties = {
-
-			},
-		};
-
-		VkResult result = vkGetPhysicalDeviceImageFormatProperties2(physicalDevice,
-																	&imageFormatInfo,
-																	&props);
-		if(result != VK_SUCCESS) {
-			logError("What on earth nigga :%d", static_cast<int>(result));
-		}
-
-		if(props.imageFormatProperties.maxMipLevels == 0) {
-			logError("What the fuck 1");
-		}
-
-		if(props.imageFormatProperties.maxArrayLayers == 0) {
-			logError("What the fuck 2");
-		}
-
-		if(props.imageFormatProperties.maxExtent.width == 0 || props.imageFormatProperties.maxExtent.height == 0) {
-			logError("What the fuck 3");
-		}
-
-		if(props.imageFormatProperties.sampleCounts == 0) {
-			logError("What the fuck 4");
-		}
 
 		return {
 			.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -202,19 +181,21 @@ namespace kvk {
 						  VkImage src,
 						  VkImage dst,
 						  VkExtent2D srcExtent,
-						  VkExtent2D dstExtent) {
+						  VkExtent2D dstExtent,
+                          bool srcIsDepth,
+                          bool dstIsDepth) {
   		VkImageBlit2 blitRegion = {
  			.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2,
 
  			.srcSubresource = {
-				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.aspectMask = static_cast<VkImageAspectFlags>(srcIsDepth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT),
 				.mipLevel = 0,
 				.baseArrayLayer = 0,
 				.layerCount = 1,
  			},
 
  			.dstSubresource =  {
-				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.aspectMask = static_cast<VkImageAspectFlags>(dstIsDepth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT),
 				.mipLevel = 0,
 				.baseArrayLayer = 0,
 				.layerCount = 1,
@@ -228,7 +209,6 @@ namespace kvk {
   		blitRegion.dstOffsets[1].x = dstExtent.width;
   		blitRegion.dstOffsets[1].y = dstExtent.height;
   		blitRegion.dstOffsets[1].z = 1;
-
 
   		VkBlitImageInfo2 blitInfo = {
  			.sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2,

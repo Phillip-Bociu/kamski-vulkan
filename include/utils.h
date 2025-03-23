@@ -60,5 +60,7 @@ namespace kvk {
 						  VkImage src,
 						  VkImage dst,
 						  VkExtent2D srcExtent,
-						  VkExtent2D dstExtent);
+						  VkExtent2D dstExtent,
+                          bool srcIsDepth = false,
+                          bool dstIsDepth = false);
 }

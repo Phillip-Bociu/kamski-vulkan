@@ -188,7 +188,8 @@ namespace kvk {
 	};
 
 	struct PushConstants {
-		VkDeviceAddress vertexBuffer;
+        glm::mat4 model;
+	    VkDeviceAddress vertexBuffer;
 	};
 
 	struct Mesh {
@@ -273,6 +274,7 @@ namespace kvk {
 						 VkImage image,
 					     const VkExtent2D& extent,
 					     const Pipeline& meshPipeline,
+					     const Pipeline& outlinePipeline,
 					     const std::vector<MeshAsset>& meshes);
 
 

@@ -127,8 +127,9 @@ int main() {
 			.setCullMode(VK_CULL_MODE_FRONT_BIT, VK_FRONT_FACE_CLOCKWISE)
 			.setColorAttachmentFormat(state.drawImage.format)
 			.setDepthAttachmentFormat(state.depthImage.format)
+			.setStencilAttachmentFormat(state.depthImage.format)
 			.enableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
-			.enableStencilTest(VK_COMPARE_OP_ALWAYS)
+			.enableStencilTest(VK_COMPARE_OP_ALWAYS, true)
 			.enableBlendingAlpha()
 			.addPushConstantRange(VK_SHADER_STAGE_VERTEX_BIT, sizeof(kvk::PushConstants))
 			.addDescriptorSetLayout(state.sceneDescriptorLayout)
@@ -138,19 +139,17 @@ int main() {
 		kvk::Pipeline outlinePipeline;
 		rc = kvk::PipelineBuilder()
 			.setColorAttachmentFormat(state.swapchainImageFormat.format)
-			.setShaders(meshVertexShader, fragmentShader)
+			.setShaders(meshVertexShader, solidColorFragmentShader)
 			.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
 			.setPolygonMode(VK_POLYGON_MODE_FILL)
 			.setCullMode(VK_CULL_MODE_FRONT_BIT, VK_FRONT_FACE_CLOCKWISE)
 			.setColorAttachmentFormat(state.drawImage.format)
 			.setDepthAttachmentFormat(state.depthImage.format)
-			.enableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL)
-			.enableStencilTest(VK_COMPARE_OP_NOT_EQUAL)
-			.enableBlendingAlpha()
+			.setStencilAttachmentFormat(state.depthImage.format)
+			.enableStencilTest(VK_COMPARE_OP_NOT_EQUAL, false)
 			.addPushConstantRange(VK_SHADER_STAGE_VERTEX_BIT, sizeof(kvk::PushConstants))
 			.addDescriptorSetLayout(state.sceneDescriptorLayout)
-			.addDescriptorSetLayout(state.samplerDescriptorLayout)
-			.build(meshPipeline, state.device);
+			.build(outlinePipeline, state.device);
 
 		state.isInitialized.store(true);
 
@@ -164,6 +163,9 @@ int main() {
 		vkDestroyShaderModule(state.device,
 							  meshVertexShader,
 							  nullptr);
+        vkDestroyShaderModule(state.device,
+                              solidColorFragmentShader,
+                              nullptr);
 
 		std::vector<kvk::MeshAsset> meshes;
 		rc = kvk::loadGltf(meshes,
@@ -226,6 +228,7 @@ int main() {
 							  state.swapchainImages[imageIndex],
 							  state.swapchainExtent,
 							  meshPipeline,
+							  outlinePipeline,
 							  meshes) != kvk::ReturnCode::OK) {
 				ShowWindow(window, SW_HIDE);
 				logError("Could not record commandBuffer");

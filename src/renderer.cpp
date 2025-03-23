@@ -641,6 +641,7 @@ namespace kvk {
 						 VkImage image,
 					     const VkExtent2D& extent,
 					     const Pipeline& meshPipeline,
+					     const Pipeline& outlinePipeline,
 					     const std::vector<MeshAsset>& meshes) {
 		vkResetCommandBuffer(frame.commandBuffer, 0);
 		VkCommandBufferBeginInfo beginInfo = {
@@ -676,7 +677,8 @@ namespace kvk {
 			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 			.clearValue =  {
 				.depthStencil =  {
-					.depth = 0.0f
+					.depth = 0.0f,
+					.stencil = 0
 				},
 			},
 		};
@@ -691,7 +693,7 @@ namespace kvk {
 			.colorAttachmentCount = 1,
 			.pColorAttachments = &colorAttachment,
 			.pDepthAttachment = &depthAttachment,
-			.pStencilAttachment = nullptr
+			.pStencilAttachment = &depthAttachment,
 		};
 
 		AllocatedBuffer sceneDataBuffer;
@@ -721,12 +723,10 @@ namespace kvk {
 		static glm::mat4 model = glm::mat4(1.0f);
 		static glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3{ 0,0, -5});
 		model = glm::rotate(model, glm::radians(1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-		view = glm::translate(view, glm::vec3(0, 0, -0.01f));
 		SceneData sData = {
     		.view = view,
     		.proj = makeInfReversedZProjRH(glm::radians(45.0f), float(extent.width) / float(extent.height), 0.1f),
     		.viewproj = sData.proj * sData.view,
-    		.model = model,
     		.ambientColor = {1.0f, 1.0f, 1.0f, 0.2f},
     		.sunlightDirection = glm::normalize(glm::vec4{1.0f, -1.0f, 0.0f, 0.0f}),
     		.sunlightColor = {0.0f, 1.0f, 0.0f, 1.0f},
@@ -755,13 +755,14 @@ namespace kvk {
 		}
 		writer.writeImage(0, state.errorTexture.view, state.sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 		writer.updateSet(state.device, imageDescriptor);
+		writer.clear();
+
+		vkCmdBeginRendering(frame.commandBuffer,
+							&renderInfo);
 
 		vkCmdBindPipeline(frame.commandBuffer,
 						  VK_PIPELINE_BIND_POINT_GRAPHICS,
 						  meshPipeline.pipeline);
-
-		vkCmdBeginRendering(frame.commandBuffer,
-							&renderInfo);
 
 		VkDescriptorSet sets[] = {
 			globalDescriptor,
@@ -796,12 +797,41 @@ namespace kvk {
 
 		vkCmdSetScissor(frame.commandBuffer, 0, 1, &scissor);
 		// camera projection
+		PushConstants pc;
+		pc.model = model;
 		for(const MeshAsset& asset : meshes) {
-    		PushConstants pc = {
-        		asset.mesh.vertexBufferAddress
-    		};
+		    pc.vertexBuffer =  asset.mesh.vertexBufferAddress;
 			vkCmdPushConstants(frame.commandBuffer,
 							   meshPipeline.layout,
+							   VK_SHADER_STAGE_VERTEX_BIT,
+							   0,
+							   sizeof(pc),
+							   &pc);
+			vkCmdBindIndexBuffer(frame.commandBuffer,
+								 asset.mesh.indices.buffer,
+								 0,
+								 VK_INDEX_TYPE_UINT32);
+
+			for(const GeoSurface& surface : asset.surfaces) {
+				vkCmdDrawIndexed(frame.commandBuffer,
+								 surface.count,
+								 1,
+								 surface.startIndex,
+								 0,
+								 0);
+			}
+		}
+
+		vkCmdBindPipeline(frame.commandBuffer,
+						  VK_PIPELINE_BIND_POINT_GRAPHICS,
+						  outlinePipeline.pipeline);
+
+		pc.model = glm::scale(pc.model, glm::vec3(1.1f));
+
+		for(const MeshAsset& asset : meshes) {
+		    pc.vertexBuffer =  asset.mesh.vertexBufferAddress;
+			vkCmdPushConstants(frame.commandBuffer,
+							   outlinePipeline.layout,
 							   VK_SHADER_STAGE_VERTEX_BIT,
 							   0,
 							   sizeof(pc),
@@ -1147,18 +1177,18 @@ namespace kvk {
 		return *this;
 	}
 
-	PipelineBuilder& PipelineBuilder::enableStencilTest(VkCompareOp compareOp) {
+	PipelineBuilder& PipelineBuilder::enableStencilTest(VkCompareOp compareOp, bool enableWriting) {
     	depthStencil.stencilTestEnable = VK_TRUE;
     	depthStencil.back = {
-    	    .failOp = VK_STENCIL_OP_KEEP,
+    	    .failOp = VK_STENCIL_OP_REPLACE,
     	    .passOp = VK_STENCIL_OP_REPLACE,
-    		.depthFailOp = VK_STENCIL_OP_KEEP,
+    		.depthFailOp = VK_STENCIL_OP_REPLACE,
     		.compareOp = compareOp,
     		.compareMask = 0xff,
-    		.writeMask = 0xff,
+    		.writeMask = static_cast<uint32_t>(enableWriting ? 0xff : 0),
     		.reference = 1
     	};
-    	depthStencil.front = {};
+    	depthStencil.front = depthStencil.back;
         return *this;
 	}
 
@@ -1214,8 +1244,15 @@ namespace kvk {
 
 	PipelineBuilder& PipelineBuilder::setDepthAttachmentFormat(VkFormat format) {
 		renderInfo.depthAttachmentFormat = format;
+		renderInfo.stencilAttachmentFormat = format;
 		return *this;
 	}
+
+	PipelineBuilder& PipelineBuilder::setStencilAttachmentFormat(VkFormat format) {
+		renderInfo.stencilAttachmentFormat = format;
+		return *this;
+	}
+
 	PipelineBuilder& PipelineBuilder::addDescriptorSetLayout(VkDescriptorSetLayout layout) {
 	    descriptorSetLayouts.push_back(layout);
 	    return *this;

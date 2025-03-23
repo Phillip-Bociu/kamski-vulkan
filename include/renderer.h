@@ -153,9 +153,10 @@ namespace kvk {
 		PipelineBuilder& setCullMode(VkCullModeFlags cullMode, VkFrontFace face);
 		PipelineBuilder& setColorAttachmentFormat(VkFormat format);
 		PipelineBuilder& setDepthAttachmentFormat(VkFormat format);
+		PipelineBuilder& setStencilAttachmentFormat(VkFormat format);
 
 		PipelineBuilder& enableDepthTest(bool depthWriteEnable, VkCompareOp op);
-		PipelineBuilder& enableStencilTest(VkCompareOp compareOp);
+		PipelineBuilder& enableStencilTest(VkCompareOp compareOp, bool enableWriting);
 		PipelineBuilder& enableBlendingAdditive();
 		PipelineBuilder& enableBlendingAlpha();
 

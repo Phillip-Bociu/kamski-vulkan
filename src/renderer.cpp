@@ -720,9 +720,10 @@ namespace kvk {
 				);
 		};
 
-		static glm::mat4 model = glm::mat4(1.0f);
 		static glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3{ 0,0, -5});
-		model = glm::rotate(model, glm::radians(1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+		static float radians = 0.0f;
+		radians += 1.0f;
+		glm::mat4 model = glm::rotate(glm::mat4(1.0f), glm::radians(radians), glm::vec3(0.0f, 1.0f, 0.0f));
 		SceneData sData = {
     		.view = view,
     		.proj = makeInfReversedZProjRH(glm::radians(45.0f), float(extent.width) / float(extent.height), 0.1f),
@@ -826,7 +827,10 @@ namespace kvk {
 						  VK_PIPELINE_BIND_POINT_GRAPHICS,
 						  outlinePipeline.pipeline);
 
-		pc.model = glm::scale(pc.model, glm::vec3(1.1f));
+		static float animation = 0.0f;
+		animation += 4.0f * 1.0f/60.0f;
+		const float outlineWidth = 0.5f + sinf(animation) * 0.2f;
+		pc.model = glm::rotate(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, outlineWidth)), glm::radians(radians), glm::vec3(0.0f, 1.0f, 0.0f));
 
 		for(const MeshAsset& asset : meshes) {
 		    pc.vertexBuffer =  asset.mesh.vertexBufferAddress;

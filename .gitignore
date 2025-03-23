@@ -1,0 +1,5 @@
+bin/
+.cache/
+.zed/
+assets/
+compile_commands.json

@@ -1,0 +1,9 @@
+[submodule "vma"]
+	path = vma
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
+[submodule "glm"]
+	path = glm
+	url = https://github.com/g-truc/glm.git
+[submodule "fastgltf"]
+	path = fastgltf
+	url = https://github.com/spnda/fastgltf.git

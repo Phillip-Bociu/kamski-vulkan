@@ -189,8 +189,9 @@ namespace kvk {
 	};
 
 	struct PushConstants {
-        glm::mat4 model;
+        glm::mat4 scaling;
 	    VkDeviceAddress vertexBuffer;
+	    VkDeviceAddress instanceBuffer;
 	};
 
 	struct Mesh {
@@ -276,7 +277,9 @@ namespace kvk {
 					     const VkExtent2D& extent,
 					     const Pipeline& meshPipeline,
 					     const Pipeline& outlinePipeline,
-					     const std::vector<MeshAsset>& meshes);
+					     const std::vector<MeshAsset>& meshes,
+                         const VkDeviceAddress instanceBufferAddress,
+                         const uint32_t instanceCount);
 
 
 	ReturnCode createSwapchain(RendererState& state,

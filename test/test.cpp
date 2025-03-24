@@ -1,8 +1,15 @@
+#include "common.h"
+#include "utils.h"
+#include <cstring>
+#define VMA_VULKAN_VERSION 1003000
+#include "glm/ext/matrix_transform.hpp"
 #include "renderer.h"
 #include "vulkan/vulkan_core.h"
+#include "vk_mem_alloc.h"
 #include <kvk.h>
 #include <cstdint>
 #include <Windows.h>
+#include <random>
 #include <thread>
 #include <mutex>
 
@@ -120,11 +127,7 @@ int main() {
 
 		kvk::Pipeline meshPipeline;
 		rc = kvk::PipelineBuilder()
-			.setColorAttachmentFormat(state.swapchainImageFormat.format)
 			.setShaders(meshVertexShader, fragmentShader)
-			.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
-			.setPolygonMode(VK_POLYGON_MODE_FILL)
-			.setCullMode(VK_CULL_MODE_FRONT_BIT, VK_FRONT_FACE_CLOCKWISE)
 			.setColorAttachmentFormat(state.drawImage.format)
 			.setDepthAttachmentFormat(state.depthImage.format)
 			.setStencilAttachmentFormat(state.depthImage.format)
@@ -138,15 +141,12 @@ int main() {
 
 		kvk::Pipeline outlinePipeline;
 		rc = kvk::PipelineBuilder()
-			.setColorAttachmentFormat(state.swapchainImageFormat.format)
 			.setShaders(meshVertexShader, solidColorFragmentShader)
-			.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
-			.setPolygonMode(VK_POLYGON_MODE_FILL)
-			.setCullMode(VK_CULL_MODE_FRONT_BIT, VK_FRONT_FACE_CLOCKWISE)
 			.setColorAttachmentFormat(state.drawImage.format)
 			.setDepthAttachmentFormat(state.depthImage.format)
 			.setStencilAttachmentFormat(state.depthImage.format)
 			.enableStencilTest(VK_COMPARE_OP_NOT_EQUAL, false)
+			.enableBlendingAlpha()
 			.addPushConstantRange(VK_SHADER_STAGE_VERTEX_BIT, sizeof(kvk::PushConstants))
 			.addDescriptorSetLayout(state.sceneDescriptorLayout)
 			.build(outlinePipeline, state.device);
@@ -177,6 +177,89 @@ int main() {
 			ShowWindow(window, SW_HIDE);
 			ExitProcess(1);
 		}
+
+		std::uint32_t monkeCount = 10;
+
+		kvk::AllocatedBuffer instanceBuffer;
+		rc = kvk::createBuffer(instanceBuffer,
+	                           state.allocator,
+	                           monkeCount * sizeof(glm::mat4),
+                               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+	                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+	                           VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+	                           VMA_MEMORY_USAGE_GPU_ONLY);
+
+		if(rc != kvk::ReturnCode::OK) {
+			logError("could not create instance buffer");
+			ShowWindow(window, SW_HIDE);
+			ExitProcess(1);
+		}
+
+		kvk::AllocatedBuffer stagingBuffer;
+		rc = kvk::createBuffer(stagingBuffer,
+	                           state.allocator,
+	                           monkeCount * sizeof(glm::mat4),
+	                           VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+	                           VMA_MEMORY_USAGE_CPU_TO_GPU);
+		if(rc != kvk::ReturnCode::OK) {
+			logError("could not create staging buffer");
+			ShowWindow(window, SW_HIDE);
+			ExitProcess(1);
+		}
+
+		{
+		    logInfo("Generating %u monkeys...", monkeCount);
+		    std::random_device device;
+			std::mt19937 generator = std::mt19937(device());
+			std::uniform_real_distribution<> rotationDis(-90.0f, 90.0f);
+			std::uniform_real_distribution<> axisDis(0.0f, 1.0f);
+			std::uniform_real_distribution<> positionDis(-5.0f, 5.0f);
+            std::vector<glm::mat4> monkeyPositions(monkeCount, glm::mat4(1.0f));
+			for(glm::mat4& model : monkeyPositions) {
+			    const glm::vec3 axis = {
+					axisDis(generator),
+					axisDis(generator),
+					axisDis(generator),
+				};
+
+				const glm::vec3 position = {
+    				positionDis(generator),
+    				positionDis(generator),
+    				positionDis(generator),
+				};
+
+                model = glm::rotate<float>(model, glm::radians(rotationDis(generator)), axis);
+                model = glm::translate<float>(model, position);
+			}
+			logInfo("Generated %u monkeys!", monkeCount);
+			void* data;
+			if(vmaMapMemory(state.allocator, stagingBuffer.allocation, &data) != VK_SUCCESS) {
+			    logError("Failed to map memory");
+				ShowWindow(window, SW_HIDE);
+				ExitProcess(1);
+			}
+			memcpy(data, monkeyPositions.data(), monkeyPositions.size() * sizeof(glm::mat4));
+			vmaUnmapMemory(state.allocator, stagingBuffer.allocation);
+		}
+
+		auto transferInstanceBuffer = [&](VkCommandBuffer cmd) {
+		    VkBufferCopy copyRegion {
+				.size = monkeCount * sizeof(glm::mat4)
+			};
+            vkCmdCopyBuffer(cmd, stagingBuffer.buffer, instanceBuffer.buffer, 1, &copyRegion);
+		};
+		if(kvk::immediateSubmit(state.transferCommandBuffers[1], state.device, state.transferQueue, transferInstanceBuffer) != VK_SUCCESS) {
+		    logError("instance data upload failed");
+			ShowWindow(window, SW_HIDE);
+			ExitProcess(1);
+		}
+		destroyBuffer(stagingBuffer, state.allocator);
+
+		VkBufferDeviceAddressInfo addrInfo = {
+		    .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+			.buffer = instanceBuffer.buffer
+		};
+		const VkDeviceAddress instanceBufferAddress = vkGetBufferDeviceAddress(state.device, &addrInfo);
 
 		while(true) {
 			if(!allow.load() || !state.swapchainExtent.width || !state.swapchainExtent.height) {
@@ -229,7 +312,9 @@ int main() {
 							  state.swapchainExtent,
 							  meshPipeline,
 							  outlinePipeline,
-							  meshes) != kvk::ReturnCode::OK) {
+							  meshes,
+							  instanceBufferAddress,
+							  monkeCount) != kvk::ReturnCode::OK) {
 				ShowWindow(window, SW_HIDE);
 				logError("Could not record commandBuffer");
 				ExitProcess(1);

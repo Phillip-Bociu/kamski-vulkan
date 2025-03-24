@@ -599,8 +599,8 @@ namespace kvk {
         std::uint32_t pixels[16 * 16];
         for(std::uint32_t y = 0; y != 16; y++) {
             for(std::uint32_t x = 0; x != 16; x++) {
-                //pixels[y * 16 + x] = ((x & 1) ^ (y & 1)) ? magenta : black;
-                pixels[y * 16 + x] = white;
+                pixels[y * 16 + x] = ((x & 1) ^ (y & 1)) ? magenta : black;
+                //pixels[y * 16 + x] = white;
             }
         }
 
@@ -642,7 +642,9 @@ namespace kvk {
 					     const VkExtent2D& extent,
 					     const Pipeline& meshPipeline,
 					     const Pipeline& outlinePipeline,
-					     const std::vector<MeshAsset>& meshes) {
+					     const std::vector<MeshAsset>& meshes,
+                         const VkDeviceAddress instanceBufferAddress,
+                         const std::uint32_t instanceCount) {
 		vkResetCommandBuffer(frame.commandBuffer, 0);
 		VkCommandBufferBeginInfo beginInfo = {
 			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -799,7 +801,8 @@ namespace kvk {
 		vkCmdSetScissor(frame.commandBuffer, 0, 1, &scissor);
 		// camera projection
 		PushConstants pc;
-		pc.model = model;
+		pc.scaling = model;
+		pc.instanceBuffer = instanceBufferAddress;
 		for(const MeshAsset& asset : meshes) {
 		    pc.vertexBuffer =  asset.mesh.vertexBufferAddress;
 			vkCmdPushConstants(frame.commandBuffer,
@@ -816,7 +819,7 @@ namespace kvk {
 			for(const GeoSurface& surface : asset.surfaces) {
 				vkCmdDrawIndexed(frame.commandBuffer,
 								 surface.count,
-								 1,
+								 instanceCount,
 								 surface.startIndex,
 								 0,
 								 0);
@@ -829,9 +832,13 @@ namespace kvk {
 
 		static float animation = 0.0f;
 		animation += 4.0f * 1.0f/60.0f;
-		const float outlineWidth = 0.5f + sinf(animation) * 0.2f;
-		pc.model = glm::rotate(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, outlineWidth)), glm::radians(radians), glm::vec3(0.0f, 1.0f, 0.0f));
+		const float outlineWidth = 1.2f + sinf(animation) * 0.2f;
+		pc.scaling = glm::rotate(glm::scale(glm::mat4(1.0f), glm::vec3(outlineWidth)), glm::radians(radians), glm::vec3(0.0f, 1.0f, 0.0f));
 
+		static std::uint32_t monkeIndex = 0;
+		if(int(animation) < int(animation + (4.0f * 1.0f/60.0f))) {
+		    monkeIndex++;
+		}
 		for(const MeshAsset& asset : meshes) {
 		    pc.vertexBuffer =  asset.mesh.vertexBufferAddress;
 			vkCmdPushConstants(frame.commandBuffer,
@@ -851,7 +858,7 @@ namespace kvk {
 								 1,
 								 surface.startIndex,
 								 0,
-								 0);
+								 (monkeIndex / 8) % instanceCount);
 			}
 		}
 		vkCmdEndRendering(frame.commandBuffer);
@@ -1098,12 +1105,16 @@ namespace kvk {
 
 		inputAssembly = {
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+			.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
 			.primitiveRestartEnable = VK_FALSE,
 		};
 
 		rasterizer = {
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-			.lineWidth = 1.0f
+			.polygonMode = VK_POLYGON_MODE_FILL,
+			.cullMode = VK_CULL_MODE_FRONT_BIT,
+			.frontFace = VK_FRONT_FACE_CLOCKWISE,
+			.lineWidth = 1.0f,
 		};
 
 		colorBlendAttachment = {

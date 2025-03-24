@@ -2,11 +2,21 @@
 #include <stdio.h>
 
 namespace kvk {
+
 #if defined(KVK_DEBUG) && !defined(logDebug)
+
 #define logDebug(format, ...)   printf("[DEBUG][%5d]: " __FILE__ ": " format "\n", __LINE__, __VA_ARGS__)
 #define logInfo(format, ...)    printf("[INFO] [%5d]: " __FILE__ ": " format "\n", __LINE__, __VA_ARGS__)
 #define logWarning(format, ...) printf("[WARN] [%5d]: " __FILE__ ": " format "\n", __LINE__, __VA_ARGS__)
 #define logError(format, ...)   printf("[ERROR][%5d]: " __FILE__ ": " format "\n", __LINE__, __VA_ARGS__)
+
+#else
+
+#define logDebug(format, ...)
+#define logInfo(format, ...)
+#define logWarning(format, ...)
+#define logError(format, ...)
+
 #endif
 
 enum class [[nodiscard]] ReturnCode {

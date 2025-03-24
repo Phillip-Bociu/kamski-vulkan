@@ -47,7 +47,7 @@ file(GLOB_RECURSE LIB_CPP_FILES "src/*cpp")
 add_library(kamskiVk STATIC ${LIB_CPP_FILES})
 target_link_directories(kamskiVk PUBLIC $ENV{VULKAN_SDK}/Lib/)
 target_link_libraries(kamskiVk PUBLIC vulkan-1 VulkanMemoryAllocator glm-header-only fastgltf)
-target_include_directories(kamskiVk PUBLIC ${CMAKE_SOURCE_DIR}/include/ $ENV{VULKAN_SDK}/Include/)
+target_include_directories(kamskiVk PUBLIC ./include/ $ENV{VULKAN_SDK}/Include/)
 target_precompile_headers(kamskiVk PUBLIC
 	"$<$<COMPILE_LANGUAGE:CXX>:deque>"
 	"$<$<COMPILE_LANGUAGE:CXX>:thread>"
@@ -95,4 +95,3 @@ if(DEFINED BUILD_TESTS)
 else()
 	message("Not building tests")
 endif()
-

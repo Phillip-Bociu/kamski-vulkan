@@ -77,10 +77,18 @@ target_precompile_headers(kamskiVk PUBLIC
 ###########################################################################################
 # Shader Compilation
 ###########################################################################################
-if (${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "AMD64")
-    set(GLSL_VALIDATOR "$ENV{VULKAN_SDK}/Bin/glslangValidator.exe" PARENT_SCOPE)
+if(WIN32)
+    if (${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "AMD64")
+        set(GLSL_VALIDATOR "$ENV{VULKAN_SDK}/Bin/glslangValidator.exe" PARENT_SCOPE)
+    else()
+        set(GLSL_VALIDATOR "$ENV{VULKAN_SDK}/Bin32/glslangValidator.exe" PARENT_SCOPE)
+    endif()
 else()
-    set(GLSL_VALIDATOR "$ENV{VULKAN_SDK}/Bin32/glslangValidator.exe" PARENT_SCOPE)
+    if (${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "AMD64")
+        set(GLSL_VALIDATOR "$ENV{VULKAN_SDK}/Bin/glslangValidator" PARENT_SCOPE)
+    else()
+        set(GLSL_VALIDATOR "$ENV{VULKAN_SDK}/Bin32/glslangValidator" PARENT_SCOPE)
+    endif()
 endif()
 
 function(addShaders target SHADERS)

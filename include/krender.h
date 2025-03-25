@@ -6,10 +6,11 @@
 #if defined(_WIN32)
 
 #define VK_USE_PLATFORM_WIN32_KHR
-#define NOMINMAX
 
 #endif // _WIN32
 #endif // KVK_GLFW
+
+#define NOMINMAX
 
 #include <cstdint>
 #include <vector>
@@ -24,11 +25,15 @@
 #include "common.h"
 
 #if !defined(KVK_GLFW)
+
 #if defined(_WIN32)
 #include <Windows.h>
 #endif
+
 #else
+
 #include <GLFW/glfw3.h>
+
 #endif
 
 #define VK_CHECK(call) \
@@ -47,8 +52,12 @@ namespace kvk {
 		std::uint32_t width;
 		std::uint32_t height;
 
+#if !defined(KVK_GLFW)
 #if defined(_WIN32)
 		HWND window;
+#endif
+#else
+        GLFWwindow* window;
 #endif
 	};
 
@@ -179,6 +188,8 @@ namespace kvk {
 	};
 
 	struct FrameData {
+	    std::uint32_t swapchainImageIndex;
+
 		VkFence inFlightFence;
 		VkCommandBuffer commandBuffer;
 		VkSemaphore imageAvailableSemaphore;
@@ -246,6 +257,7 @@ namespace kvk {
 	struct RendererState {
 		std::atomic<bool> isInitialized;
 		std::vector<std::function<void()>> mainDeletionQueue;
+		std::uint32_t currentFrame;
 
 		VmaAllocator allocator;
 
@@ -294,24 +306,18 @@ namespace kvk {
 
 	ReturnCode init(RendererState& state, const InitSettings* settings);
 
-	ReturnCode createShaderModuleFromFile(VkShaderModule& shaderModule,
-										  VkDevice device,
-										  const char* shaderPath);
+	ReturnCode createShaderModuleFromFile(VkShaderModule& shaderModule, RendererState& state, const char* shaderPath);
+	ReturnCode createShaderModuleFromMemory(VkShaderModule& shaderModule, RendererState& state, const std::uint32_t* shaderContents, const std::uint64_t shaderSize);
 
-	ReturnCode createShaderModuleFromMemory(VkShaderModule& shaderModule,
-											VkDevice device,
-											const std::uint32_t* shaderContents,
-											const std::uint64_t shaderSize);
+	FrameData* startFrame(RendererState& state);
 
 	ReturnCode drawScene(FrameData& frame,
 					     RendererState& state,
-						 VkImage image,
 					     const VkExtent2D& extent,
 					     const Pipeline& meshPipeline,
-					     const Pipeline& outlinePipeline,
-					     const std::vector<MeshAsset>& meshes,
-                         const VkDeviceAddress instanceBufferAddress,
-                         const uint32_t instanceCount);
+					     const std::vector<MeshAsset>& meshes);
+
+	ReturnCode endFrame(RendererState& state, FrameData& frame);
 
 
 	ReturnCode createSwapchain(RendererState& state,

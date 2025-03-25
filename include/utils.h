@@ -1,6 +1,7 @@
 #pragma once
 #include <vulkan/vulkan.h>
 #include <cstdint>
+#include <span>
 #include <functional>
 
 #include "common.h"

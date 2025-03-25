@@ -3,7 +3,6 @@
 #include <cstring>
 #define VMA_VULKAN_VERSION 1003000
 #include "glm/ext/matrix_transform.hpp"
-#include "renderer.h"
 #include "vulkan/vulkan_core.h"
 #include "vk_mem_alloc.h"
 #include <kvk.h>
@@ -119,7 +118,7 @@ int main() {
 
 		VkShaderModule fragmentShader;
 		rc = kvk::createShaderModuleFromFile(fragmentShader,
-											 state.device,
+											 state,
 											 "../shaders/simple_shader.frag.glsl.spv");
 		if(rc != kvk::ReturnCode::OK) {
 			ExitProcess(1);
@@ -307,66 +306,11 @@ int main() {
 
 			if(kvk::drawScene(frame,
 			                  state,
-							  state.swapchainImages[imageIndex],
 							  state.swapchainExtent,
 							  meshPipeline,
-							  outlinePipeline,
-							  meshes,
-							  instanceBufferAddress,
-							  monkeCount) != kvk::ReturnCode::OK) {
+							  meshes) != kvk::ReturnCode::OK) {
 				ShowWindow(window, SW_HIDE);
 				logError("Could not record commandBuffer");
-				ExitProcess(1);
-			}
-
-			VkSemaphore waitSemaphores[] = {
-				frame.imageAvailableSemaphore
-			};
-
-			VkSemaphore signalSemaphores[] = {
-				frame.renderFinishedSemaphore
-			};
-			VkPipelineStageFlags waitStages[] = {
-				VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-			};
-
-			VkSubmitInfo submitInfo = {
-				.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-				.waitSemaphoreCount = 1,
-				.pWaitSemaphores = waitSemaphores,
-				.pWaitDstStageMask = waitStages,
-				.commandBufferCount = 1,
-				.pCommandBuffers = &frame.commandBuffer,
-				.signalSemaphoreCount = 1,
-				.pSignalSemaphores = signalSemaphores
-			};
-
-			if(vkQueueSubmit(state.graphicsQueue,
-							 1,
-							 &submitInfo,
-							 frame.inFlightFence) != VK_SUCCESS) {
-				ShowWindow(window, SW_HIDE);
-				logError("Queue submit failed");
-				ExitProcess(1);
-			}
-
-			VkPresentInfoKHR presentInfo = {
-				.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-				.waitSemaphoreCount = 1,
-				.pWaitSemaphores = signalSemaphores,
-				.swapchainCount = 1,
-				.pSwapchains = &state.swapchain,
-				.pImageIndices = &imageIndex,
-				.pResults = nullptr
-			};
-
-			result = vkQueuePresentKHR(state.presentQueue,
-									   &presentInfo);
-
-			if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-				continue;
-			} else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
-				ShowWindow(window, SW_HIDE);
 				ExitProcess(1);
 			}
 

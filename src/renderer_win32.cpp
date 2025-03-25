@@ -1,4 +1,4 @@
-#include "renderer.h"
+#include "krender_win32.h"
 
 namespace kvk {
 

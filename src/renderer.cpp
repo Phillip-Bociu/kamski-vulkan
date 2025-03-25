@@ -5,7 +5,7 @@
 #define VMA_IMPLEMENTATION
 #define GLM_ENABLE_EXPERIMENTAL
 #include "common.h"
-#include "renderer.h"
+#include "krender.h"
 #include "utils.h"
 
 #include <glm/gtx/transform.hpp>
@@ -21,8 +21,10 @@
 
 
 #if defined(_WIN32)
-#include "renderer_win32.h"
+#include "krender_win32.h"
 #endif
+
+#include <GLFW/glfw3.h>
 
 namespace kvk {
 	static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
@@ -62,7 +64,7 @@ namespace kvk {
 	}
 
 	ReturnCode createShaderModuleFromMemory(VkShaderModule& shaderModule,
-											VkDevice device,
+                                            RendererState& state,
 											const std::uint32_t* shaderContents,
 											const std::uint64_t shaderSize) {
 		VkShaderModuleCreateInfo createInfo = {
@@ -71,7 +73,7 @@ namespace kvk {
 			.pCode = shaderContents,
 		};
 
-		if(vkCreateShaderModule(device,
+		if(vkCreateShaderModule(state.device,
 								&createInfo,
 								nullptr,
 								&shaderModule) != VK_SUCCESS) {
@@ -82,7 +84,7 @@ namespace kvk {
 	}
 
 	ReturnCode createShaderModuleFromFile(VkShaderModule& shaderModule,
-										  VkDevice device,
+										  RendererState& state,
 										  const char* shaderPath) {
 		std::ifstream vs(shaderPath, std::ios::ate | std::ios::binary);
 		if(!vs.is_open()) {
@@ -96,7 +98,7 @@ namespace kvk {
 		vs.read((char*)vsData.data(), size);
 
 		return createShaderModuleFromMemory(shaderModule,
-											device,
+											state,
 											vsData.data(),
 											size);
 	}
@@ -115,6 +117,8 @@ namespace kvk {
 			.engineVersion = VK_MAKE_VERSION(1, 0, 0),
 			.apiVersion = VK_API_VERSION_1_3
 		};
+
+		state.currentFrame = 0;
 
 		/*=====================================
 				Validation layer handling
@@ -164,7 +168,7 @@ namespace kvk {
 		std::vector<const char*> extensions(desiredExtensions, desiredExtensions + sizeof(desiredExtensions) / sizeof(desiredExtensions[0]));
 #ifdef KVK_GLFW
 		std::uint32_t glfwExtensionCount;
-		const char** glfwExtensions = glfwGetRequiredExtensions(&glfwExtensionCount);
+		const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 		extensions.insert(extensions.end(), glfwExtensions, glfwExtensions + glfwExtensionCount);
 #endif
 
@@ -219,7 +223,7 @@ namespace kvk {
         VK_CHECK(glfwCreateWindowSurface(state.instance,
                                          settings->window,
                                          nullptr,
-                                         state.surface));
+                                         &state.surface));
 #endif // KVK_GLFW
 		logDebug("Surface created");
 
@@ -657,13 +661,9 @@ namespace kvk {
 
 	ReturnCode drawScene(FrameData& frame,
 					     RendererState& state,
-						 VkImage image,
 					     const VkExtent2D& extent,
 					     const Pipeline& meshPipeline,
-					     const Pipeline& outlinePipeline,
-					     const std::vector<MeshAsset>& meshes,
-                         const VkDeviceAddress instanceBufferAddress,
-                         const std::uint32_t instanceCount) {
+					     const std::vector<MeshAsset>& meshes) {
 		vkResetCommandBuffer(frame.commandBuffer, 0);
 		VkCommandBufferBeginInfo beginInfo = {
 			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -686,7 +686,7 @@ namespace kvk {
 			.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
 			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 			.clearValue =  {
-				.color = { 1.0f, 0.0f, 0.0f, 1.0f },
+				.color = { 0.0f, 1.0f, 0.0f, 1.0f },
 			},
 		};
 
@@ -821,7 +821,6 @@ namespace kvk {
 		// camera projection
 		PushConstants pc;
 		pc.scaling = model;
-		pc.instanceBuffer = instanceBufferAddress;
 		for(const MeshAsset& asset : meshes) {
 		    pc.vertexBuffer =  asset.mesh.vertexBufferAddress;
 			vkCmdPushConstants(frame.commandBuffer,
@@ -838,39 +837,7 @@ namespace kvk {
 			for(const GeoSurface& surface : asset.surfaces) {
 				vkCmdDrawIndexed(frame.commandBuffer,
 								 surface.count,
-								 instanceCount,
-								 surface.startIndex,
-								 0,
-								 0);
-			}
-		}
-
-		vkCmdBindPipeline(frame.commandBuffer,
-						  VK_PIPELINE_BIND_POINT_GRAPHICS,
-						  outlinePipeline.pipeline);
-
-		static float animation = 0.0f;
-		animation += 4.0f * 1.0f/60.0f;
-		const float outlineWidth = 1.2f + sinf(animation) * 0.2f;
-		pc.scaling = glm::rotate(glm::scale(glm::mat4(1.0f), glm::vec3(outlineWidth)), glm::radians(radians), glm::vec3(0.0f, 1.0f, 0.0f));
-
-		for(const MeshAsset& asset : meshes) {
-		    pc.vertexBuffer =  asset.mesh.vertexBufferAddress;
-			vkCmdPushConstants(frame.commandBuffer,
-							   outlinePipeline.layout,
-							   VK_SHADER_STAGE_VERTEX_BIT,
-							   0,
-							   sizeof(pc),
-							   &pc);
-			vkCmdBindIndexBuffer(frame.commandBuffer,
-								 asset.mesh.indices.buffer,
-								 0,
-								 VK_INDEX_TYPE_UINT32);
-
-			for(const GeoSurface& surface : asset.surfaces) {
-				vkCmdDrawIndexed(frame.commandBuffer,
-								 surface.count,
-								 instanceCount,
+								 1,
 								 surface.startIndex,
 								 0,
 								 0);
@@ -879,7 +846,7 @@ namespace kvk {
 		vkCmdEndRendering(frame.commandBuffer);
 
 		transitionImage(frame.commandBuffer,
-						image,
+						state.swapchainImages[frame.swapchainImageIndex],
 						VK_IMAGE_LAYOUT_UNDEFINED,
 						VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
@@ -890,12 +857,12 @@ namespace kvk {
 
 		blitImageToImage(frame.commandBuffer,
  						 state.drawImage.image,
- 						 image,
+                         state.swapchainImages[frame.swapchainImageIndex],
  						 extent,
  						 extent);
 
 		transitionImage(frame.commandBuffer,
-						image,
+		                state.swapchainImages[frame.swapchainImageIndex],
 						VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 						VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
@@ -926,12 +893,6 @@ namespace kvk {
 		std::uint32_t familyCount = sizeof(queueFamilyIndices) / sizeof(queueFamilyIndices[0]);
 		std::sort(queueFamilyIndices, queueFamilyIndices + familyCount);
 		familyCount = std::unique(queueFamilyIndices, queueFamilyIndices + familyCount) - queueFamilyIndices;
-
-		if(familyCount == 1) {
-			logInfo("Swapchain running in exclusive mode");
-		} else {
-			logInfo("Swapchain running in concurrent mode");
-		}
 
 		VkSwapchainCreateInfoKHR swapchainCreateInfo = {
 			.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
@@ -1906,4 +1867,94 @@ namespace kvk {
 								   nullptr);
 		}
 
+		FrameData* startFrame(RendererState& state) {
+		    FrameData& frame = state.frames[state.currentFrame];
+			vkWaitForFences(state.device,
+							1,
+							&frame.inFlightFence,
+							VK_TRUE,
+							std::numeric_limits<std::uint64_t>::max());
+			std::uint32_t imageIndex;
+
+			//
+			// Flush the per-frame deletionQueue
+			//
+			for(auto iter = frame.deletionQueue.rbegin(); iter != frame.deletionQueue.rend(); ++iter) {
+				(*iter)();
+			}
+			frame.deletionQueue.clear();
+			frame.descriptors.clearPools(state.device);
+
+			VkResult result = vkAcquireNextImageKHR(state.device,
+													state.swapchain,
+													std::numeric_limits<std::uint64_t>::max(),
+													frame.imageAvailableSemaphore,
+													VK_NULL_HANDLE,
+													&imageIndex);
+			frame.swapchainImageIndex = imageIndex;
+
+			vkResetFences(state.device,
+						  1,
+						  &frame.inFlightFence);
+
+			if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+			    return nullptr;
+			} else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+			    logError("Something gone wrong: %d", result);
+                return nullptr;
+			}
+			return &frame;
+		}
+
+		ReturnCode endFrame(RendererState& state, FrameData& frame) {
+		    state.currentFrame = (state.currentFrame + 1) % MAX_IN_FLIGHT_FRAMES;
+			VkSemaphore waitSemaphores[] = {
+				frame.imageAvailableSemaphore
+			};
+
+			VkSemaphore signalSemaphores[] = {
+				frame.renderFinishedSemaphore
+			};
+			VkPipelineStageFlags waitStages[] = {
+				VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+			};
+
+			VkSubmitInfo submitInfo = {
+				.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+				.waitSemaphoreCount = 1,
+				.pWaitSemaphores = waitSemaphores,
+				.pWaitDstStageMask = waitStages,
+				.commandBufferCount = 1,
+				.pCommandBuffers = &frame.commandBuffer,
+				.signalSemaphoreCount = 1,
+				.pSignalSemaphores = signalSemaphores
+			};
+
+			if(vkQueueSubmit(state.graphicsQueue,
+							 1,
+							 &submitInfo,
+							 frame.inFlightFence) != VK_SUCCESS) {
+				logError("Queue submit failed");
+				return ReturnCode::UNKNOWN;
+			}
+
+			VkPresentInfoKHR presentInfo = {
+				.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+				.waitSemaphoreCount = 1,
+				.pWaitSemaphores = signalSemaphores,
+				.swapchainCount = 1,
+				.pSwapchains = &state.swapchain,
+				.pImageIndices = &frame.swapchainImageIndex,
+				.pResults = nullptr
+			};
+
+			VkResult result = vkQueuePresentKHR(state.presentQueue, &presentInfo);
+			if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+			    return ReturnCode::UNKNOWN;
+			} else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+			    logError("Very wrong");
+				return ReturnCode::UNKNOWN;
+			}
+			return ReturnCode::OK;
+		}
 }

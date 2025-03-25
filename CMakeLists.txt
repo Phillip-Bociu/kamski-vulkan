@@ -3,9 +3,6 @@ cmake_policy(SET CMP0091 NEW)
 project(kvk)
 
 find_package(Vulkan REQUIRED)
-if(DEFINED KVK_GLFW)
-    find_package(glfw)
-endif()
 
 ###########################################################################################
 # Flags
@@ -16,13 +13,13 @@ set(CMAKE_TRY_COMPILE_TARGET_TYPE "STATIC_LIBRARY")
 
 IF(KVK_DEBUG MATCHES ON)
     message("DEBUG BUILD")
-    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
+    #set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
     add_compile_definitions(KVK_DEBUG)
     add_compile_options(/Zi)
     set(CMAKE_BUILD_TYPE Debug)
 ELSE(KVK_DEBUG MATCHES ON)
     message("RELEASE BUILD")
-    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
+    #set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
     set(CMAKE_BUILD_TYPE Release)
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
     IF(KAMSKI_LLVM MATCHES ON)
@@ -48,15 +45,20 @@ file(GLOB_RECURSE LIB_CPP_FILES "src/*cpp")
 # Renderer library
 ###########################################################################################
 
-add_library(kamskiVk STATIC ${LIB_CPP_FILES})
-target_link_directories(kamskiVk PUBLIC $ENV{VULKAN_SDK}/Lib/)
-target_link_libraries(kamskiVk PUBLIC vulkan-1 VulkanMemoryAllocator glm-header-only fastgltf)
+add_library(kamskiVk STATIC)
+target_sources(kamskiVk PRIVATE src/renderer.cpp src/utils.cpp)
 
-if(DEFINED KVK_GLFW)
+if(NOT DEFINED KVK_GLFW)
+    if(WIN32)
+        target_sources(kamskiVk PRIVATE src/renderer_win32.cpp)
+    endif()
+else()
     target_compile_definitions(kamskiVk PUBLIC KVK_GLFW)
     target_link_libraries(kamskiVk PUBLIC glfw)
 endif()
 
+target_link_directories(kamskiVk PUBLIC $ENV{VULKAN_SDK}/Lib/)
+target_link_libraries(kamskiVk PUBLIC vulkan-1 VulkanMemoryAllocator glm-header-only fastgltf)
 target_include_directories(kamskiVk PUBLIC ./include/ $ENV{VULKAN_SDK}/Include/)
 
 target_precompile_headers(kamskiVk PUBLIC
@@ -76,9 +78,9 @@ target_precompile_headers(kamskiVk PUBLIC
 # Shader Compilation
 ###########################################################################################
 if (${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "AMD64")
-    set(GLSL_VALIDATOR "$ENV{VULKAN_SDK}/Bin/glslangValidator.exe")
+    set(GLSL_VALIDATOR "$ENV{VULKAN_SDK}/Bin/glslangValidator.exe" PARENT_SCOPE)
 else()
-    set(GLSL_VALIDATOR "$ENV{VULKAN_SDK}/Bin32/glslangValidator.exe")
+    set(GLSL_VALIDATOR "$ENV{VULKAN_SDK}/Bin32/glslangValidator.exe" PARENT_SCOPE)
 endif()
 
 function(addShaders target SHADERS)

@@ -1,10 +1,15 @@
 #pragma once
 #include "glm/fwd.hpp"
 #include "vulkan/vulkan_core.h"
+
+#if !defined(KVK_GLFW)
 #if defined(_WIN32)
+
 #define VK_USE_PLATFORM_WIN32_KHR
 #define NOMINMAX
-#endif
+
+#endif // _WIN32
+#endif // KVK_GLFW
 
 #include <cstdint>
 #include <vector>
@@ -18,8 +23,12 @@
 #include <glm/glm.hpp>
 #include "common.h"
 
+#if !defined(KVK_GLFW)
 #if defined(_WIN32)
 #include <Windows.h>
+#endif
+#else
+#include <GLFW/glfw3.h>
 #endif
 
 #define VK_CHECK(call) \
@@ -208,6 +217,29 @@ namespace kvk {
 	struct MeshAsset {
 		Mesh mesh;
 		std::vector<GeoSurface> surfaces;
+	};
+
+	enum MaterialPass {
+	    MAT_OPAQUE,
+		MAT_TRANSPARENT,
+		MAT_SHADOW,
+		MAT_COUNT
+	};
+
+	struct MaterialInstance {
+	    Pipeline* pipeline;
+		VkDescriptorSet materialSet;
+		MaterialPass pass;
+	};
+
+	struct RenderObject {
+	    std::uint32_t indexCount;
+	    std::uint32_t firstIndex;
+		VkBuffer indexBuffer;
+		MaterialInstance* materialInstance;
+
+		glm::mat4 transform;
+		VkDeviceAddress vertexBufferAddress;
 	};
 
 	static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 2;

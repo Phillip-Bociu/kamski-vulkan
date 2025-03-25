@@ -150,11 +150,23 @@ namespace kvk {
 		  =====================================*/
 		const char* desiredExtensions[] = {
 			"VK_KHR_surface",
+#ifndef KVK_GLFW
+#ifdef _WIN32
 			"VK_KHR_win32_surface",
+#endif // _WIN32
+#endif // KVK_GLKFW
+
 #ifdef KVK_DEBUG
 			VK_EXT_DEBUG_UTILS_EXTENSION_NAME
 #endif
 		};
+
+		std::vector<const char*> extensions(desiredExtensions, desiredExtensions + sizeof(desiredExtensions) / sizeof(desiredExtensions[0]));
+#ifdef KVK_GLFW
+		std::uint32_t glfwExtensionCount;
+		const char** glfwExtensions = glfwGetRequiredExtensions(&glfwExtensionCount);
+		extensions.insert(extensions.end(), glfwExtensions, glfwExtensions + glfwExtensionCount);
+#endif
 
 		VkInstanceCreateInfo instanceCreateInfo = {
 			.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
@@ -163,8 +175,8 @@ namespace kvk {
 			.enabledLayerCount = sizeof(desiredLayers) / sizeof(desiredLayers[0]),
 			.ppEnabledLayerNames = desiredLayers,
 #endif
-			.enabledExtensionCount = sizeof(desiredExtensions) / sizeof(desiredExtensions[0]),
-			.ppEnabledExtensionNames = desiredExtensions
+			.enabledExtensionCount = std::uint32_t(extensions.size()),
+			.ppEnabledExtensionNames = extensions.data(),
 		};
 		VkResult result = vkCreateInstance(&instanceCreateInfo,
 										   nullptr,
@@ -196,12 +208,19 @@ namespace kvk {
 		  =====================================*/
 
 		ReturnCode rc;
+#if !defined(KVK_GLFW)
 #if defined(_WIN32)
 		rc = createWin32Surface(state, settings->window);
-#endif
-		if(rc != ReturnCode::OK) {
-			return rc;
-		}
+#endif // _WIN32
+        if(rc != ReturnCode::OK) {
+            return rc;
+        }
+#else // KVK_GLFW
+        VK_CHECK(glfwCreateWindowSurface(state.instance,
+                                         settings->window,
+                                         nullptr,
+                                         state.surface));
+#endif // KVK_GLFW
 		logDebug("Surface created");
 
 		/*=====================================
@@ -835,10 +854,6 @@ namespace kvk {
 		const float outlineWidth = 1.2f + sinf(animation) * 0.2f;
 		pc.scaling = glm::rotate(glm::scale(glm::mat4(1.0f), glm::vec3(outlineWidth)), glm::radians(radians), glm::vec3(0.0f, 1.0f, 0.0f));
 
-		static std::uint32_t monkeIndex = 0;
-		if(int(animation) < int(animation + (4.0f * 1.0f/60.0f))) {
-		    monkeIndex++;
-		}
 		for(const MeshAsset& asset : meshes) {
 		    pc.vertexBuffer =  asset.mesh.vertexBufferAddress;
 			vkCmdPushConstants(frame.commandBuffer,
@@ -855,10 +870,10 @@ namespace kvk {
 			for(const GeoSurface& surface : asset.surfaces) {
 				vkCmdDrawIndexed(frame.commandBuffer,
 								 surface.count,
-								 1,
+								 instanceCount,
 								 surface.startIndex,
 								 0,
-								 (monkeIndex / 8) % instanceCount);
+								 0);
 			}
 		}
 		vkCmdEndRendering(frame.commandBuffer);

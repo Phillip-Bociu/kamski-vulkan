@@ -159,7 +159,6 @@ int main() {
 		vkDestroyShaderModule(state.device,
 							  fragmentShader,
 							  nullptr);
-
 		vkDestroyShaderModule(state.device,
 							  meshVertexShader,
 							  nullptr);
@@ -170,15 +169,15 @@ int main() {
 		std::vector<kvk::MeshAsset> meshes;
 		rc = kvk::loadGltf(meshes,
 						   state,
-						   "../assets/monkey.glb");
+						   "../assets/house.glb");
 
 		if(rc != kvk::ReturnCode::OK) {
 			logError("could not load basicmesh.glb");
 			ShowWindow(window, SW_HIDE);
 			ExitProcess(1);
 		}
+		std::uint32_t monkeCount = 1;
 
-		std::uint32_t monkeCount = 10;
 
 		kvk::AllocatedBuffer instanceBuffer;
 		rc = kvk::createBuffer(instanceBuffer,

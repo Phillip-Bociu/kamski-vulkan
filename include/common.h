@@ -5,11 +5,20 @@ namespace kvk {
 
 #if defined(KVK_DEBUG) && !defined(logDebug)
 
+#if defined (_WIN32) 
 #define logDebug(format, ...)   printf("[DEBUG][%5d]: " __FILE__ ": " format "\n", __LINE__, __VA_ARGS__)
 #define logInfo(format, ...)    printf("[INFO] [%5d]: " __FILE__ ": " format "\n", __LINE__, __VA_ARGS__)
 #define logWarning(format, ...) printf("[WARN] [%5d]: " __FILE__ ": " format "\n", __LINE__, __VA_ARGS__)
 #define logError(format, ...)   printf("[ERROR][%5d]: " __FILE__ ": " format "\n", __LINE__, __VA_ARGS__)
 
+#elif defined (__linux__)
+
+#define logDebug(format, ...)   printf("[DEBUG][%5d]: " __FILE__ ": " format "\n", __LINE__ __VA_OPT__(,) __VA_ARGS__)
+#define logInfo(format, ...)    printf("[INFO] [%5d]: " __FILE__ ": " format "\n", __LINE__ __VA_OPT__(,) __VA_ARGS__)
+#define logWarning(format, ...) printf("[WARN] [%5d]: " __FILE__ ": " format "\n", __LINE__ __VA_OPT__(,) __VA_ARGS__)
+#define logError(format, ...)   printf("[ERROR][%5d]: " __FILE__ ": " format "\n", __LINE__ __VA_OPT__(,) __VA_ARGS__)
+
+#endif
 #else
 
 #define logDebug(format, ...)

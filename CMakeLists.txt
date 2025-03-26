@@ -39,18 +39,18 @@ add_subdirectory(fastgltf)
 ###########################################################################################
 # Globs
 ###########################################################################################
-file(GLOB_RECURSE LIB_CPP_FILES "src/*cpp")
+file(GLOB_RECURSE WIN_LIB_CPP_FILES "src/*_win32*cpp")
 
 ###########################################################################################
 # Renderer library
 ###########################################################################################
 
 add_library(kamskiVk STATIC)
-target_sources(kamskiVk PRIVATE src/renderer.cpp src/utils.cpp)
+target_sources(kamskiVk PRIVATE src/krender.cpp src/utils.cpp)
 
 if(NOT DEFINED KVK_GLFW)
     if(WIN32)
-        target_sources(kamskiVk PRIVATE src/renderer_win32.cpp)
+        target_sources(kamskiVk PRIVATE "${WIN_LIB_CPP_FILES}")
     endif()
 else()
     target_compile_definitions(kamskiVk PUBLIC KVK_GLFW)
@@ -72,6 +72,9 @@ target_precompile_headers(kamskiVk PUBLIC
  "$<$<COMPILE_LANGUAGE:CXX>:set>"
  "$<$<COMPILE_LANGUAGE:CXX>:numeric>"
  "$<$<COMPILE_LANGUAGE:CXX>:fstream>"
+ "$<$<COMPILE_LANGUAGE:CXX>:${PROJECT_SOURCE_DIR}/fastgltf/include/fastgltf/core.hpp>"
+ "$<$<COMPILE_LANGUAGE:CXX>:${PROJECT_SOURCE_DIR}/fastgltf/include/fastgltf/glm_element_traits.hpp>"
+ "$<$<COMPILE_LANGUAGE:CXX>:${PROJECT_SOURCE_DIR}/fastgltf/include/fastgltf/tools.hpp>"
 )
 
 ###########################################################################################

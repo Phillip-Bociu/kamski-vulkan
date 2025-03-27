@@ -6,5 +6,4 @@ file(GLOB_RECURSE GLSL_SOURCE_FILES "${CMAKE_SOURCE_DIR}/shaders/*.glsl")
 add_executable(kamskiVkTest ${TEST_CPP_FILES})
 target_link_libraries(kamskiVkTest PUBLIC kamskiVk)
 
-addShaders(kamskiVkTest "${GLSL_SOURCE_FILES}")
-
+addShaders(kamskiVkTest kvkTestShaders "${GLSL_SOURCE_FILES}")

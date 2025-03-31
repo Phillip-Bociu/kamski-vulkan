@@ -1,3 +1,6 @@
+#include "vulkan/vulkan_core.h"
+#include <cstdint>
+#include <thread>
 #define VMA_IMPLEMENTATION
 #define GLM_ENABLE_EXPERIMENTAL
 #include "common.h"
@@ -969,7 +972,7 @@ namespace kvk {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
             .polygonMode = VK_POLYGON_MODE_FILL,
             .cullMode = VK_CULL_MODE_FRONT_BIT,
-            .frontFace = VK_FRONT_FACE_CLOCKWISE,
+            .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
             .lineWidth = 1.0f,
         };
 
@@ -1011,6 +1014,15 @@ namespace kvk {
             .attachmentCount = 1,
             .pAttachments = &colorBlendAttachment
         };
+    }
+
+    PipelineBuilder& PipelineBuilder::setPrebuiltLayout(VkPipelineLayout layout) {
+        if(layout != VK_NULL_HANDLE) {
+            prebuiltLayout = layout;
+        } else {
+            prebuiltLayout.reset();
+        }
+        return *this;
     }
 
     PipelineBuilder& PipelineBuilder::enableBlendingAdditive() {
@@ -1131,21 +1143,26 @@ namespace kvk {
 
     ReturnCode PipelineBuilder::build(Pipeline& pipeline,
                                       const VkDevice device) {
-        VkPipelineLayoutCreateInfo layoutCreateInfo = {
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-            .setLayoutCount = static_cast<std::uint32_t>(descriptorSetLayouts.size()),
-            .pSetLayouts = descriptorSetLayouts.data(),
-            .pushConstantRangeCount = static_cast<std::uint32_t>(pushConstantRanges.size()),
-            .pPushConstantRanges = pushConstantRanges.data(),
-        };
+        if(!prebuiltLayout) {
+            VkPipelineLayoutCreateInfo layoutCreateInfo = {
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+                .setLayoutCount = static_cast<std::uint32_t>(descriptorSetLayouts.size()),
+                .pSetLayouts = descriptorSetLayouts.data(),
+                .pushConstantRangeCount = static_cast<std::uint32_t>(pushConstantRanges.size()),
+                .pPushConstantRanges = pushConstantRanges.data(),
+            };
 
-        if(vkCreatePipelineLayout(device,
-                                  &layoutCreateInfo,
-                                  nullptr,
-                                  &pipeline.layout) != VK_SUCCESS) {
-            logError("Could not create pipeline layout");
-            return ReturnCode::UNKNOWN;
+            if(vkCreatePipelineLayout(device,
+                                      &layoutCreateInfo,
+                                      nullptr,
+                                      &pipeline.layout) != VK_SUCCESS) {
+                logError("Could not create pipeline layout");
+                return ReturnCode::UNKNOWN;
+            }
+        } else {
+            pipeline.layout = prebuiltLayout.value();
         }
+
         VkPipelineDynamicStateCreateInfo dynamicStateInfo = {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
             .dynamicStateCount = static_cast<std::uint32_t>(dynamicState.size()),
@@ -1273,6 +1290,12 @@ namespace kvk {
                            const VkFormat format,
                            const VkExtent3D extent,
                            const VkImageUsageFlags usageFlags) {
+        const static std::thread::id threadId = std::this_thread::get_id();
+        if(std::this_thread::get_id() != threadId) {
+            logError("I am not yet thread-safe :(");
+            return ReturnCode::UNKNOWN;
+        }
+        
         const std::uint64_t size = extent.width * extent.height * extent.depth * 4;
 
         AllocatedBuffer stagingBuffer;
@@ -1484,6 +1507,7 @@ namespace kvk {
         VkWriteDescriptorSet write = {
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .dstSet = VK_NULL_HANDLE,
+            .dstBinding = std::uint32_t(binding),
             .descriptorCount = 1,
             .descriptorType = type,
             .pBufferInfo = &info,
@@ -1505,6 +1529,7 @@ namespace kvk {
         VkWriteDescriptorSet write = {
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .dstSet = VK_NULL_HANDLE,
+            .dstBinding = std::uint32_t(binding),
             .descriptorCount = 1,
             .descriptorType = type,
             .pImageInfo = &info,
@@ -1663,19 +1688,22 @@ namespace kvk {
 
         kvk::AllocatedBuffer stagingBuffer;
         rc = createBuffer(stagingBuffer,
-                            state.allocator,
-                            vertexBufferSize + indexBufferSize,
-                            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                            VMA_MEMORY_USAGE_CPU_ONLY);
+                          state.allocator,
+                          vertexBufferSize + indexBufferSize,
+                          VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                          VMA_MEMORY_USAGE_CPU_ONLY);
         if(rc != kvk::ReturnCode::OK) {
             return rc;
         }
+        defer {
+            destroyBuffer(stagingBuffer, state.allocator);
+        };
+
 
         void* data;
         VkResult vkResult = vmaMapMemory(state.allocator, stagingBuffer.allocation, &data);
         if(vkResult != VK_SUCCESS) {
             logError("Could not map memory :( %d", vkResult);
-            destroyBuffer(stagingBuffer, state.allocator);
             return rc;
         }
         memcpy(data, vertices.data(), vertexBufferSize);
@@ -1713,11 +1741,42 @@ namespace kvk {
 
         if(vkResult != VK_SUCCESS) {
             logError("Immediate submit failed: %d", vkResult);
-            destroyBuffer(stagingBuffer, state.allocator);
             return ReturnCode::UNKNOWN;
         }
 
-        destroyBuffer(stagingBuffer, state.allocator);
         return ReturnCode::OK;
+    }
+
+    DescriptorSetLayoutBuilder& DescriptorSetLayoutBuilder::addBinding(const VkDescriptorType type) {
+        bindings[bindingCount] = VkDescriptorSetLayoutBinding {
+            .binding = bindingCount,
+            .descriptorType = type,
+            .descriptorCount = 1
+        };
+        bindingCount++;
+        return *this;
+    }
+
+    DescriptorSetLayoutBuilder& DescriptorSetLayoutBuilder::addBinding(const VkDescriptorType type, std::uint32_t binding) {
+        bindings[bindingCount] = VkDescriptorSetLayoutBinding {
+            .binding = binding,
+            .descriptorType = type,
+            .descriptorCount = 1
+        };
+        bindingCount++;
+        return *this;
+    }
+
+    bool DescriptorSetLayoutBuilder::build(VkDescriptorSetLayout& layout,
+                                           VkDevice device,
+                                           VkShaderStageFlags stage) {
+        if(kvk::createDescriptorSetLayout(layout,
+                                          device,
+                                          stage,
+                                          std::span(bindings, bindingCount)) != kvk::ReturnCode::OK) {
+            logError("Could not create descriptor layout");
+            return false;
+        }
+        return true;
     }
 }

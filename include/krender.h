@@ -132,6 +132,18 @@ namespace kvk {
                        VkDescriptorSet set);
     };
 
+    struct DescriptorSetLayoutBuilder {
+        VkDescriptorSetLayoutBinding bindings[64];
+        std::uint32_t bindingCount;
+        
+        DescriptorSetLayoutBuilder& addBinding(VkDescriptorType type);
+        DescriptorSetLayoutBuilder& addBinding(const VkDescriptorType type, std::uint32_t binding);
+
+        bool build(VkDescriptorSetLayout& layout,
+                   VkDevice device,
+                   VkShaderStageFlags stage);
+    };
+
     struct PipelineBuilder {
         PipelineBuilder();
 
@@ -139,6 +151,7 @@ namespace kvk {
         std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
         std::vector<VkPushConstantRange> pushConstantRanges;
         std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
+        std::optional<VkPipelineLayout> prebuiltLayout;
 
         VkFormat colorAttachmentFormat;
 
@@ -161,6 +174,7 @@ namespace kvk {
         PipelineBuilder& setColorAttachmentFormat(VkFormat format);
         PipelineBuilder& setDepthAttachmentFormat(VkFormat format);
         PipelineBuilder& setStencilAttachmentFormat(VkFormat format);
+        PipelineBuilder& setPrebuiltLayout(VkPipelineLayout layout = VK_NULL_HANDLE);
 
         PipelineBuilder& enableDepthTest(bool depthWriteEnable, VkCompareOp op);
         PipelineBuilder& enableStencilTest(VkCompareOp compareOp, bool enableWriting);
@@ -190,24 +204,25 @@ namespace kvk {
     };
 
     struct Mesh {
-		AllocatedBuffer indices;
-		AllocatedBuffer vertices;
-		VkDeviceAddress vertexBufferAddress;
-	};
+        AllocatedBuffer indices;
+        AllocatedBuffer vertices;
+        VkDeviceAddress vertexBufferAddress;
+    };
 
-	struct GeoSurface {
-		std::uint32_t startIndex;
-		std::uint32_t count;
-	};
+    struct GeoSurface {
+        std::uint32_t startIndex;
+        std::uint32_t count;
+    };
 
-	struct MeshAsset {
-		Mesh mesh;
-		std::vector<GeoSurface> surfaces;
-	};
+    struct MeshAsset {
+        Mesh mesh;
+        std::vector<GeoSurface> surfaces;
+    };
 
     enum MaterialPass {
         MAT_OPAQUE,
         MAT_SHADOW,
+        MAT_TRANSPARENT,
         MAT_COUNT
     };
 
@@ -227,7 +242,7 @@ namespace kvk {
         std::uint32_t firstIndex;
     };
 
-    static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 2;
+    static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 1;
     struct RendererState {
         std::uint32_t currentFrame;
 

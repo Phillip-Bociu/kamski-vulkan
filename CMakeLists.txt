@@ -34,7 +34,6 @@ ENDIF(KVK_DEBUG MATCHES ON)
 ###########################################################################################
 add_subdirectory(vma)
 add_subdirectory(glm)
-add_subdirectory(fastgltf)
 
 ###########################################################################################
 # Globs
@@ -59,9 +58,9 @@ endif()
 
 target_link_directories(kamskiVk PUBLIC $ENV{VULKAN_SDK}/Lib/)
 if (WIN32)
-    target_link_libraries(kamskiVk PUBLIC vulkan-1 VulkanMemoryAllocator glm-header-only fastgltf)
+    target_link_libraries(kamskiVk PUBLIC vulkan-1 VulkanMemoryAllocator glm-header-only)
 else ()
-    target_link_libraries(kamskiVk PUBLIC vulkan VulkanMemoryAllocator glm-header-only fastgltf)
+    target_link_libraries(kamskiVk PUBLIC vulkan VulkanMemoryAllocator glm-header-only)
 endif ()
 target_include_directories(kamskiVk PUBLIC ./include/ $ENV{VULKAN_SDK}/Include/)
 
@@ -76,9 +75,6 @@ target_precompile_headers(kamskiVk PUBLIC
  "$<$<COMPILE_LANGUAGE:CXX>:set>"
  "$<$<COMPILE_LANGUAGE:CXX>:numeric>"
  "$<$<COMPILE_LANGUAGE:CXX>:fstream>"
- "$<$<COMPILE_LANGUAGE:CXX>:${PROJECT_SOURCE_DIR}/fastgltf/include/fastgltf/core.hpp>"
- "$<$<COMPILE_LANGUAGE:CXX>:${PROJECT_SOURCE_DIR}/fastgltf/include/fastgltf/glm_element_traits.hpp>"
- "$<$<COMPILE_LANGUAGE:CXX>:${PROJECT_SOURCE_DIR}/fastgltf/include/fastgltf/tools.hpp>"
 )
 
 ###########################################################################################

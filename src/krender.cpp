@@ -14,10 +14,6 @@
 #include <set>
 #include <algorithm>
 
-#include <fastgltf/glm_element_traits.hpp>
-#include <fastgltf/core.hpp>
-#include <fastgltf/tools.hpp>
-
 #if defined(_WIN32)
 #include "krender_win32.h"
 #endif

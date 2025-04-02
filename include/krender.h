@@ -13,6 +13,7 @@
 #define NOMINMAX
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 #include <span>
 #include <deque>

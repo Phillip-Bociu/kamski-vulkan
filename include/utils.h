@@ -50,6 +50,7 @@ namespace kvk {
 	VkResult immediateSubmit(VkCommandBuffer cmd,
 							 VkDevice device,
 							 VkQueue queue,
+                             std::mutex& queueMutex,
 							 std::function<void(VkCommandBuffer)>&& function);
 
 	void transitionImage(VkCommandBuffer cmd,

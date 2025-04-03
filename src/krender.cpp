@@ -613,6 +613,7 @@ namespace kvk {
         VK_CHECK(immediateSubmit(state.transferCommandBuffers[0],
                         state.device,
                         state.transferQueue,
+                        state.transferQueueMutex,
                         [&](VkCommandBuffer cmd) {
             transitionImage(cmd,
                             state.depthImage.image,
@@ -623,6 +624,7 @@ namespace kvk {
         return ReturnCode::OK;
     }
 
+    /*
     ReturnCode drawScene(FrameData& frame,
                          RendererState& state,
                          const VkExtent2D& extent,
@@ -713,14 +715,14 @@ namespace kvk {
                                  0,
                                  VK_INDEX_TYPE_UINT32);
 
-            for(const GeoSurface& surface : asset.surfaces) {
-                vkCmdDrawIndexed(frame.commandBuffer,
-                                 surface.count,
-                                 1,
-                                 surface.startIndex,
-                                 0,
-                                 0);
-            }
+            //for(const GeoSurface& surface : asset.surfaces) {
+            //    vkCmdDrawIndexed(frame.commandBuffer,
+            //                     surface.count,
+            //                     1,
+            //                     surface.startIndex,
+            //                     0,
+            //                     0);
+            //}
         }
         vkCmdEndRendering(frame.commandBuffer);
 
@@ -752,6 +754,7 @@ namespace kvk {
         }
         return ReturnCode::OK;
     }
+*/
 
     ReturnCode createSwapchain(RendererState& state,
                                VkExtent2D extent,
@@ -931,6 +934,7 @@ namespace kvk {
         VK_CHECK(immediateSubmit(state.transferCommandBuffers[0],
                                  state.device,
                                  state.transferQueue,
+                                 state.transferQueueMutex,
                                  [&](VkCommandBuffer cmd) {
                                      transitionImage(cmd,
                                                      state.depthImage.image,
@@ -1229,27 +1233,32 @@ namespace kvk {
                          buffer.buffer,
                          buffer.allocation);
     }
+
     ReturnCode createImage(AllocatedImage& image,
                            RendererState& state,
                            const VkFormat format,
                            const VkExtent3D extent,
                            const VkImageUsageFlags usageFlags) {
         VkImageCreateInfo imageInfo = imageCreateInfo(state.physicalDevice,
-                                                            format,
-                                                            usageFlags,
-                                                            extent);
+                                                      format,
+                                                      usageFlags,
+                                                      extent);
 
         VmaAllocationCreateInfo imageAllocInfo = {
             .usage = VMA_MEMORY_USAGE_GPU_ONLY,
             .requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         };
 
-        vmaCreateImage(state.allocator,
-                       &imageInfo,
-                       &imageAllocInfo,
-                       &image.image,
-                       &image.allocation,
-                       nullptr);
+        if(vmaCreateImage(state.allocator,
+                          &imageInfo,
+                          &imageAllocInfo,
+                          &image.image,
+                          &image.allocation,
+                          nullptr) != VK_SUCCESS) {
+            logError("Could not allocate image memory");
+            return ReturnCode::UNKNOWN;
+        }
+
         VkImageAspectFlags aspect;
         switch(format) {
             case VK_FORMAT_D24_UNORM_S8_UINT: {
@@ -1276,7 +1285,6 @@ namespace kvk {
         }
         image.format = format;
         image.extent = extent;
-
         return ReturnCode::OK;
     }
 
@@ -1289,11 +1297,10 @@ namespace kvk {
         const static std::thread::id threadId = std::this_thread::get_id();
         if(std::this_thread::get_id() != threadId) {
             logError("I am not yet thread-safe :(");
-            return ReturnCode::UNKNOWN;
+            //return ReturnCode::UNKNOWN;
         }
         
         const std::uint64_t size = extent.width * extent.height * extent.depth * 4;
-
         AllocatedBuffer stagingBuffer;
         ReturnCode rc = createBuffer(stagingBuffer,
                                      state.allocator,
@@ -1352,6 +1359,7 @@ namespace kvk {
         VkResult res = immediateSubmit(state.transferCommandBuffers[0],
                                        state.device,
                                        state.transferQueue,
+                                       state.transferQueueMutex,
                                        transferFunc);
         if(res != VK_SUCCESS) {
             logError("transfer failed: %d", res);
@@ -1649,7 +1657,8 @@ namespace kvk {
                           std::span<std::uint32_t> indices,
                           std::span<std::uint8_t> vertices) {
         const std::uint64_t vertexBufferSize = vertices.size();
-        const std::uint64_t indexBufferSize = indices.size() * sizeof(std::uint32_t);
+        const std::uint64_t indexBufferSize = indices.size_bytes();
+        mesh.indexCount = indices.size();
 
         kvk::ReturnCode rc = createBuffer(mesh.vertices,
             state.allocator,
@@ -1672,11 +1681,11 @@ namespace kvk {
             &deviceAddressInfo);
 
         rc = createBuffer(mesh.indices,
-                            state.allocator,
-                            indexBufferSize,
-                            VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
-                            VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                            VMA_MEMORY_USAGE_GPU_ONLY);
+                          state.allocator,
+                          indexBufferSize,
+                          VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+                          VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                          VMA_MEMORY_USAGE_GPU_ONLY);
 
         if(rc != kvk::ReturnCode::OK) {
             return rc;
@@ -1733,6 +1742,7 @@ namespace kvk {
         vkResult = kvk::immediateSubmit(state.transferCommandBuffers[0],
                                         state.device,
                                         state.transferQueue,
+                                        state.transferQueueMutex,
                                         transferFunc);
 
         if(vkResult != VK_SUCCESS) {

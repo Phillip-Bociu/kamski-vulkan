@@ -136,10 +136,12 @@ namespace kvk {
 									  VkFormat format,
 									  VkImageUsageFlags usageFlags,
 									  VkExtent3D extent) {
+        const VkImageType imageType = (extent.depth == 1 ? VK_IMAGE_TYPE_2D : VK_IMAGE_TYPE_3D);
+
 		VkPhysicalDeviceImageFormatInfo2 imageFormatInfo = {
 			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2,
 			.format = format,
-			.type = VK_IMAGE_TYPE_2D,
+			.type = imageType,
 			.tiling = VK_IMAGE_TILING_OPTIMAL,
 			.usage = usageFlags,
 		};
@@ -147,7 +149,7 @@ namespace kvk {
 		return {
 			.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
 			.pNext = nullptr,
-			.imageType = VK_IMAGE_TYPE_2D,
+			.imageType = imageType,
 			.format = format,
 			.extent = extent,
 			.mipLevels = 1,
@@ -226,6 +228,7 @@ namespace kvk {
 	VkResult immediateSubmit(VkCommandBuffer cmd,
 							 VkDevice device,
 							 VkQueue queue,
+                             std::mutex& queueMutex,
 							 std::function<void(VkCommandBuffer)>&& function) {
 		VkResult retval;
 		VkCommandBufferBeginInfo beginInfo = {
@@ -270,14 +273,17 @@ namespace kvk {
 			.pCommandBuffers = &cmd,
 		};
 
+        queueMutex.lock();
 		retval = vkQueueSubmit(queue,
 							   1,
 							   &submitInfo,
 							   fence);
 		if(retval != VK_SUCCESS) {
 			logError("Queue submit failed");
+            queueMutex.unlock();
 			return retval;
-		}
+        }
+        queueMutex.unlock();
 
 		vkWaitForFences(device,
 						1,

@@ -1,6 +1,7 @@
 #pragma once
 #include "glm/fwd.hpp"
 #include "vulkan/vulkan_core.h"
+#include <mutex>
 
 #if !defined(KVK_GLFW)
 #if defined(_WIN32)
@@ -208,16 +209,7 @@ namespace kvk {
         AllocatedBuffer indices;
         AllocatedBuffer vertices;
         VkDeviceAddress vertexBufferAddress;
-    };
-
-    struct GeoSurface {
-        std::uint32_t startIndex;
-        std::uint32_t count;
-    };
-
-    struct MeshAsset {
-        Mesh mesh;
-        std::vector<GeoSurface> surfaces;
+        std::uint32_t indexCount;
     };
 
     enum MaterialPass {
@@ -269,6 +261,7 @@ namespace kvk {
 
         FrameData frames[MAX_IN_FLIGHT_FRAMES];
         VkCommandBuffer transferCommandBuffers[4];
+        std::mutex transferQueueMutex;
 
         AllocatedImage drawImage;
         AllocatedImage depthImage;

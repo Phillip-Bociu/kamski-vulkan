@@ -16,11 +16,13 @@ namespace kvk {
 	VkImageCreateInfo imageCreateInfo(VkPhysicalDevice physicalDevice,
 									  VkFormat format,
 									  VkImageUsageFlags usageFlags,
-									  VkExtent3D extent);
+									  VkExtent3D extent,
+                                      std::uint32_t arrayLayerCount = 1);
 
 	VkImageViewCreateInfo imageViewCreateInfo(VkFormat format,
 											  VkImage image,
-											  VkImageAspectFlags aspectFlags);
+											  VkImageAspectFlags aspectFlags,
+                                              bool isCubemap = false);
 
 	VkDescriptorSetLayoutBinding descriptorSetLayoutBinding(std::uint32_t binding,
 															VkDescriptorType type);

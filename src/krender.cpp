@@ -971,7 +971,7 @@ namespace kvk {
         rasterizer = {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
             .polygonMode = VK_POLYGON_MODE_FILL,
-            .cullMode = VK_CULL_MODE_FRONT_BIT,
+            .cullMode = VK_CULL_MODE_BACK_BIT,
             .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
             .lineWidth = 1.0f,
         };
@@ -1075,12 +1075,10 @@ namespace kvk {
         return *this;
     }
 
-
     PipelineBuilder& PipelineBuilder::addPushConstantRange(VkShaderStageFlags stage, std::uint32_t size, std::uint32_t offset) {
         pushConstantRanges.emplace_back(stage, offset, size);
         return *this;
     }
-
 
     PipelineBuilder& PipelineBuilder::setShaders(VkShaderModule vertexShader, VkShaderModule fragmentShader) {
         shaderStages.clear();
@@ -1238,11 +1236,13 @@ namespace kvk {
                            RendererState& state,
                            const VkFormat format,
                            const VkExtent3D extent,
-                           const VkImageUsageFlags usageFlags) {
+                           const VkImageUsageFlags usageFlags,
+                           bool isCubemap) {
         VkImageCreateInfo imageInfo = imageCreateInfo(state.physicalDevice,
                                                       format,
                                                       usageFlags,
-                                                      extent);
+                                                      extent,
+                                                      isCubemap ? 6 : 1);
 
         VmaAllocationCreateInfo imageAllocInfo = {
             .usage = VMA_MEMORY_USAGE_GPU_ONLY,
@@ -1275,7 +1275,8 @@ namespace kvk {
         }
         VkImageViewCreateInfo imageViewInfo = imageViewCreateInfo(format,
                                                                   image.image,
-                                                                  aspect);
+                                                                  aspect,
+                                                                  isCubemap);
         if(vkCreateImageView(state.device,
                              &imageViewInfo,
                              nullptr,
@@ -1318,7 +1319,8 @@ namespace kvk {
                          state,
                          format,
                          extent,
-                         usageFlags);
+                         usageFlags,
+                         false);
         if(rc != ReturnCode::OK) {
             logError("Could not create image");
             return rc;
@@ -1368,6 +1370,100 @@ namespace kvk {
 
         destroyBuffer(stagingBuffer,
                       state.allocator);
+        return ReturnCode::OK;
+    }
+
+    ReturnCode createCubemap(AllocatedImage& image,
+                             RendererState& state,
+                             std::span<void*, 6> data,
+                             const VkFormat format,
+                             const VkExtent2D extent,
+                             const VkImageUsageFlags usageFlags) {
+        const static std::thread::id threadId = std::this_thread::get_id();
+        if(std::this_thread::get_id() != threadId) {
+            logError("I am not yet thread-safe :(");
+            //return ReturnCode::UNKNOWN;
+        }
+        
+        const std::uint64_t size = extent.width * extent.height * 6 * 4;
+        const std::uint64_t imageSize = extent.width * extent.height * 4;
+
+        AllocatedBuffer stagingBuffer;
+        ReturnCode rc = createBuffer(stagingBuffer,
+                                     state.allocator,
+                                     size,
+                                     VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                                     VMA_MEMORY_USAGE_CPU_ONLY);
+
+        if(rc != ReturnCode::OK) {
+            logError("Could not create staging buffer");
+            return rc;
+        }
+        defer {
+            destroyBuffer(stagingBuffer, state.allocator);
+        };
+        std::uint8_t* dst = (std::uint8_t*) stagingBuffer.allocation->GetMappedData();
+        for(std::uint64_t i = 0; i != 6; i++) {
+            memcpy(dst + imageSize * i, data[i], imageSize);
+        }
+
+        rc = createImage(image,
+                         state,
+                         format,
+                         VkExtent3D{extent.width, extent.height, 1},
+                         usageFlags,
+                         true);
+        if(rc != ReturnCode::OK) {
+            logError("Could not create image");
+            return rc;
+        }
+
+        auto transferFunc = [&](VkCommandBuffer cmd) {
+            transitionImage(cmd,
+                            image.image,
+                            VK_IMAGE_LAYOUT_UNDEFINED,
+                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+            VkBufferImageCopy copyRegion = {
+                .bufferOffset = 0,
+                .bufferRowLength = 0,
+                .bufferImageHeight = 0,
+
+                .imageSubresource = {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .mipLevel = 0,
+                    .baseArrayLayer = 0,
+                    .layerCount = 6,
+                },
+                .imageExtent = {
+                    .width = extent.width,
+                    .height = extent.height,
+                    .depth = 1,
+                },
+            };
+
+            vkCmdCopyBufferToImage(cmd,
+                                   stagingBuffer.buffer,
+                                   image.image,
+                                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                   1,
+                                   &copyRegion);
+            transitionImage(cmd,
+                            image.image,
+                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        };
+
+        VkResult res = immediateSubmit(state.transferCommandBuffers[0],
+                                       state.device,
+                                       state.transferQueue,
+                                       state.transferQueueMutex,
+                                       transferFunc);
+        if(res != VK_SUCCESS) {
+            logError("transfer failed: %d", res);
+            return ReturnCode::UNKNOWN;
+        }
+
         return ReturnCode::OK;
     }
 

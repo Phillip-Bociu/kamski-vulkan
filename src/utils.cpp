@@ -135,7 +135,8 @@ namespace kvk {
 	VkImageCreateInfo imageCreateInfo(VkPhysicalDevice physicalDevice,
 									  VkFormat format,
 									  VkImageUsageFlags usageFlags,
-									  VkExtent3D extent) {
+									  VkExtent3D extent,
+                                      std::uint32_t arrayLayerCount) {
         const VkImageType imageType = (extent.depth == 1 ? VK_IMAGE_TYPE_2D : VK_IMAGE_TYPE_3D);
 
 		VkPhysicalDeviceImageFormatInfo2 imageFormatInfo = {
@@ -149,11 +150,12 @@ namespace kvk {
 		return {
 			.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
 			.pNext = nullptr,
+            .flags = arrayLayerCount == 6 ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0u,
 			.imageType = imageType,
 			.format = format,
 			.extent = extent,
 			.mipLevels = 1,
-			.arrayLayers = 1,
+			.arrayLayers = arrayLayerCount,
 			.samples = VK_SAMPLE_COUNT_1_BIT,
 			.tiling = VK_IMAGE_TILING_OPTIMAL,
 			.usage = usageFlags,
@@ -162,19 +164,20 @@ namespace kvk {
 
 	VkImageViewCreateInfo imageViewCreateInfo(VkFormat format,
 											  VkImage image,
-											  VkImageAspectFlags aspectFlags) {
+											  VkImageAspectFlags aspectFlags,
+                                              bool isCubemap) {
 		return {
 			.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
 			.pNext = nullptr,
 			.image = image,
-			.viewType = VK_IMAGE_VIEW_TYPE_2D,
+			.viewType = isCubemap ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D,
 			.format = format,
 			.subresourceRange = {
 				.aspectMask = aspectFlags,
 				.baseMipLevel = 0,
 				.levelCount = 1,
 				.baseArrayLayer = 0,
-				.layerCount = 1,
+				.layerCount = (isCubemap ? 6u : 1u),
 			},
 		};
 	}

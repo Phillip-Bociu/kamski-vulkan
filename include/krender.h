@@ -2,6 +2,7 @@
 #include "glm/fwd.hpp"
 #include "vulkan/vulkan_core.h"
 #include <mutex>
+#include <type_traits>
 
 #if !defined(KVK_GLFW)
 #if defined(_WIN32)
@@ -314,7 +315,8 @@ namespace kvk {
                            RendererState& state,
                            const VkFormat format,
                            const VkExtent3D extent,
-                           const VkImageUsageFlags usageFlags);
+                           const VkImageUsageFlags usageFlags,
+                           bool isCubemap = false);
 
     ReturnCode createImage(AllocatedImage& image,
                            RendererState& state,
@@ -322,6 +324,13 @@ namespace kvk {
                            const VkFormat format,
                            const VkExtent3D extent,
                            const VkImageUsageFlags usageFlags);
+
+    ReturnCode createCubemap(AllocatedImage& image,
+                             RendererState& state,
+                             std::span<void*, 6> data,
+                             const VkFormat format,
+                             const VkExtent2D extent,
+                             const VkImageUsageFlags usageFlags);
 
     void destroyImage(AllocatedImage& image,
                       VkDevice device,

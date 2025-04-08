@@ -226,6 +226,18 @@ namespace kvk {
         MaterialPass pass;
     };
 
+    union CubemapContents {
+        struct {
+            const void* left;
+            const void* right;
+            const void* top;
+            const void* bottom;
+            const void* back;
+            const void* front;
+        };
+        const char* imageContents[6];
+    };
+
     struct RenderObject {
         MaterialInstance* materialInstance;
         VkBuffer indexBuffer;
@@ -254,19 +266,27 @@ namespace kvk {
         VkCommandPool commandPool;
 
         VkQueue transferQueue;
+        std::mutex transferQueueMutex;
+
         VkQueue graphicsQueue;
+        std::mutex graphicsQueueMutex;
+
         VkQueue presentQueue;
+        std::mutex presentQueueMutex;
+
         VkQueue computeQueue;
+        std::mutex computeQueueMutex;
 
         VkSurfaceKHR surface;
 
         FrameData frames[MAX_IN_FLIGHT_FRAMES];
         VkCommandBuffer transferCommandBuffers[4];
-        std::mutex transferQueueMutex;
 
         AllocatedImage drawImage;
         AllocatedImage depthImage;
         AllocatedImage errorTexture;
+
+        DescriptorAllocator gpDescriptorAllocator;
 
         //
         // Swapchain stuff
@@ -327,7 +347,14 @@ namespace kvk {
 
     ReturnCode createCubemap(AllocatedImage& image,
                              RendererState& state,
-                             std::span<void*, 6> data,
+                             const CubemapContents& data,
+                             const VkFormat format,
+                             const VkExtent2D extent,
+                             const VkImageUsageFlags usageFlags);
+
+    ReturnCode createCubemap(AllocatedImage& image,
+                             RendererState& state,
+                             const CubemapContents& data,
                              const VkFormat format,
                              const VkExtent2D extent,
                              const VkImageUsageFlags usageFlags);

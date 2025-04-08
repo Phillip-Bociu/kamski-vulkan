@@ -509,6 +509,7 @@ namespace kvk {
             DescriptorAllocator::PoolSizeRatio{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 },
         };
 
+        state.gpDescriptorAllocator.init(state.device, 1000, ratios);
         for(int frameIndex = 0; frameIndex != MAX_IN_FLIGHT_FRAMES; frameIndex++) {
             state.frames[frameIndex].descriptors.init(state.device,
                                                       1000,
@@ -624,138 +625,6 @@ namespace kvk {
         return ReturnCode::OK;
     }
 
-    /*
-    ReturnCode drawScene(FrameData& frame,
-                         RendererState& state,
-                         const VkExtent2D& extent,
-                         const Pipeline& meshPipeline,
-                         const std::vector<MeshAsset>& meshes) {
-        vkResetCommandBuffer(frame.commandBuffer, 0);
-        VkCommandBufferBeginInfo beginInfo = {
-            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        };
-
-        if(vkBeginCommandBuffer(frame.commandBuffer, &beginInfo) != VK_SUCCESS) {
-            logError("Could not start command buffer recording");
-            return ReturnCode::UNKNOWN;
-        }
-
-        transitionImage(frame.commandBuffer,
-                        state.drawImage.image,
-                        VK_IMAGE_LAYOUT_UNDEFINED,
-                        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-
-        VkRenderingAttachmentInfo colorAttachment = {
-            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView = state.drawImage.view,
-            .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-            .clearValue =  {
-                .color = { 0.0f, 1.0f, 0.0f, 1.0f },
-            },
-        };
-
-        VkRenderingAttachmentInfo depthAttachment = {
-            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView = state.depthImage.view,
-            .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-            .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-            .clearValue =  {
-                .depthStencil =  {
-                    .depth = 0.0f,
-                    .stencil = 0
-                },
-            },
-        };
-
-        VkRenderingInfo renderInfo = {
-            .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-            .renderArea = {
-                VkOffset2D {0, 0},
-                extent
-            },
-            .layerCount = 1,
-            .colorAttachmentCount = 1,
-            .pColorAttachments = &colorAttachment,
-            .pDepthAttachment = &depthAttachment,
-            .pStencilAttachment = &depthAttachment,
-        };
-        vkCmdBeginRendering(frame.commandBuffer,
-                            &renderInfo);
-
-        vkCmdBindPipeline(frame.commandBuffer,
-                          VK_PIPELINE_BIND_POINT_GRAPHICS,
-                          meshPipeline.pipeline);
-
-        VkViewport viewport = {
-            .x = 0,
-            .y = 0,
-            .width = static_cast<float>(extent.width),
-            .height = static_cast<float>(extent.height),
-            .minDepth = 0.0f,
-            .maxDepth = 1.0f,
-        };
-
-        vkCmdSetViewport(frame.commandBuffer, 0, 1, &viewport);
-        VkRect2D scissor = {
-            .offset = {
-                .x = 0,
-                .y = 0
-            },
-            .extent = extent,
-        };
-
-        vkCmdSetScissor(frame.commandBuffer, 0, 1, &scissor);
-        // camera projection
-        for(const MeshAsset& asset : meshes) {
-            vkCmdBindIndexBuffer(frame.commandBuffer,
-                                 asset.mesh.indices.buffer,
-                                 0,
-                                 VK_INDEX_TYPE_UINT32);
-
-            //for(const GeoSurface& surface : asset.surfaces) {
-            //    vkCmdDrawIndexed(frame.commandBuffer,
-            //                     surface.count,
-            //                     1,
-            //                     surface.startIndex,
-            //                     0,
-            //                     0);
-            //}
-        }
-        vkCmdEndRendering(frame.commandBuffer);
-
-        transitionImage(frame.commandBuffer,
-                        state.swapchainImages[frame.swapchainImageIndex],
-                        VK_IMAGE_LAYOUT_UNDEFINED,
-                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-
-        transitionImage(frame.commandBuffer,
-                        state.drawImage.image,
-                        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-
-        blitImageToImage(frame.commandBuffer,
-                          state.drawImage.image,
-                         state.swapchainImages[frame.swapchainImageIndex],
-                          extent,
-                          extent);
-
-        transitionImage(frame.commandBuffer,
-                        state.swapchainImages[frame.swapchainImageIndex],
-                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-
-
-        if(vkEndCommandBuffer(frame.commandBuffer) != VK_SUCCESS) {
-            logError("Could not end command buffer");
-            return ReturnCode::UNKNOWN;
-        }
-        return ReturnCode::OK;
-    }
-*/
-
     ReturnCode createSwapchain(RendererState& state,
                                VkExtent2D extent,
                                VkSurfaceFormatKHR format,
@@ -864,11 +733,12 @@ namespace kvk {
 
         rc = createImage(state.drawImage,
                          state,
-                         VK_FORMAT_R16G16B16A16_SFLOAT,
+                         VK_FORMAT_R32G32B32A32_SFLOAT,
                          drawImageExtent,
                          VK_IMAGE_USAGE_TRANSFER_DST_BIT |
                          VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
                          VK_IMAGE_USAGE_STORAGE_BIT |
+                         VK_IMAGE_USAGE_SAMPLED_BIT |
                          VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
         if(rc != ReturnCode::OK) {
             logError("Could not create draw image");
@@ -1294,7 +1164,8 @@ namespace kvk {
                            const void* data,
                            const VkFormat format,
                            const VkExtent3D extent,
-                           const VkImageUsageFlags usageFlags) {
+                           const VkImageUsageFlags usage) {
+        const VkImageUsageFlags usageFlags = usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
         const static std::thread::id threadId = std::this_thread::get_id();
         if(std::this_thread::get_id() != threadId) {
             logError("I am not yet thread-safe :(");
@@ -1375,10 +1246,12 @@ namespace kvk {
 
     ReturnCode createCubemap(AllocatedImage& image,
                              RendererState& state,
-                             std::span<void*, 6> data,
+                             const CubemapContents& data,
                              const VkFormat format,
                              const VkExtent2D extent,
-                             const VkImageUsageFlags usageFlags) {
+                             VkImageUsageFlags usage) {
+        const VkImageUsageFlags usageFlags = usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+
         const static std::thread::id threadId = std::this_thread::get_id();
         if(std::this_thread::get_id() != threadId) {
             logError("I am not yet thread-safe :(");
@@ -1402,9 +1275,12 @@ namespace kvk {
         defer {
             destroyBuffer(stagingBuffer, state.allocator);
         };
+
         std::uint8_t* dst = (std::uint8_t*) stagingBuffer.allocation->GetMappedData();
         for(std::uint64_t i = 0; i != 6; i++) {
-            memcpy(dst + imageSize * i, data[i], imageSize);
+            memcpy(dst + imageSize * i,
+                   data.imageContents[i],
+                   imageSize);
         }
 
         rc = createImage(image,

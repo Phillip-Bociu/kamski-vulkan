@@ -22,7 +22,8 @@ namespace kvk {
 	VkImageViewCreateInfo imageViewCreateInfo(VkFormat format,
 											  VkImage image,
 											  VkImageAspectFlags aspectFlags,
-                                              bool isCubemap = false);
+                                              bool isCubemap = false,
+                                              std::uint32_t baseArrayLayer = 0);
 
 	VkDescriptorSetLayoutBinding descriptorSetLayoutBinding(std::uint32_t binding,
 															VkDescriptorType type);

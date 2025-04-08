@@ -165,7 +165,8 @@ namespace kvk {
 	VkImageViewCreateInfo imageViewCreateInfo(VkFormat format,
 											  VkImage image,
 											  VkImageAspectFlags aspectFlags,
-                                              bool isCubemap) {
+                                              bool isCubemap,
+                                              std::uint32_t baseArrayLayer) {
 		return {
 			.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
 			.pNext = nullptr,
@@ -176,7 +177,7 @@ namespace kvk {
 				.aspectMask = aspectFlags,
 				.baseMipLevel = 0,
 				.levelCount = 1,
-				.baseArrayLayer = 0,
+				.baseArrayLayer = baseArrayLayer,
 				.layerCount = (isCubemap ? 6u : 1u),
 			},
 		};

@@ -884,6 +884,7 @@ namespace kvk {
             .attachmentCount = 1,
             .pAttachments = &colorBlendAttachment
         };
+        basePipeline = VK_NULL_HANDLE;
     }
 
     PipelineBuilder& PipelineBuilder::setPrebuiltLayout(VkPipelineLayout layout) {
@@ -1009,6 +1010,11 @@ namespace kvk {
         return *this;
     }
 
+    PipelineBuilder& PipelineBuilder::setBasePipeline(VkPipeline pipeline) {
+        basePipeline = pipeline;
+        return *this;
+    }
+
     ReturnCode PipelineBuilder::build(Pipeline& pipeline,
                                       const VkDevice device) {
         if(!prebuiltLayout) {
@@ -1050,7 +1056,8 @@ namespace kvk {
             .pDepthStencilState = &depthStencil,
             .pColorBlendState = &blendState,
             .pDynamicState = &dynamicStateInfo,
-            .layout = pipeline.layout
+            .layout = pipeline.layout,
+            .basePipelineHandle = basePipeline
         };
 
         if(vkCreateGraphicsPipelines(device,
@@ -1469,11 +1476,20 @@ namespace kvk {
     }
 
 
-    void DescriptorWriter::writeBuffer(int binding,
-                                        VkBuffer buffer,
+    DescriptorWriter::DescriptorWriter() {
+        bindingCount = 0;
+    }
+    void DescriptorWriter::writeBuffer(VkBuffer buffer,
                                         const std::uint64_t size,
                                         const std::uint64_t offset,
                                         VkDescriptorType type) {
+        writeBuffer(bindingCount, buffer, size, offset, type);
+    }
+    void DescriptorWriter::writeBuffer(int binding,
+                                       VkBuffer buffer,
+                                       const std::uint64_t size,
+                                       const std::uint64_t offset,
+                                       VkDescriptorType type) {
         auto& info = bufferInfos.emplace_back(VkDescriptorBufferInfo{
             .buffer = buffer,
             .offset = offset,
@@ -1489,6 +1505,14 @@ namespace kvk {
             .pBufferInfo = &info,
         };
         writes.push_back(write);
+        bindingCount++;
+    }
+
+    void DescriptorWriter::writeImage(VkImageView view,
+                                      VkSampler sampler,
+                                      VkImageLayout layout,
+                                      VkDescriptorType type) {
+        writeImage(bindingCount, view, sampler, layout, type);
     }
 
     void DescriptorWriter::writeImage(int binding,
@@ -1511,12 +1535,14 @@ namespace kvk {
             .pImageInfo = &info,
         };
         writes.push_back(write);
+        bindingCount++;
     }
 
     void DescriptorWriter::clear() {
         imageInfos.clear();
         bufferInfos.clear();
         writes.clear();
+        bindingCount = 0;
     }
 
     void DescriptorWriter::updateSet(VkDevice device,
@@ -1725,6 +1751,10 @@ namespace kvk {
         return ReturnCode::OK;
     }
 
+    DescriptorSetLayoutBuilder::DescriptorSetLayoutBuilder() {
+        bindingCount = 0;
+    }
+
     DescriptorSetLayoutBuilder& DescriptorSetLayoutBuilder::addBinding(const VkDescriptorType type) {
         bindings[bindingCount] = VkDescriptorSetLayoutBinding {
             .binding = bindingCount,
@@ -1756,5 +1786,114 @@ namespace kvk {
             return false;
         }
         return true;
+    }
+
+
+    RenderPassBuilder::RenderPassBuilder():
+        combinedDepthStencil(false),
+        hasDepth(false),
+        hasStencil(false) {
+    }
+
+    RenderPassBuilder& RenderPassBuilder::addColorAttachment(VkImageView view,
+                                                             VkAttachmentLoadOp loadOp,
+                                                             glm::vec4 clearColor,
+                                                             VkAttachmentStoreOp storeOp,
+                                                             VkImageLayout imageLayout) {
+        VkRenderingAttachmentInfo& colorAttachment = colorAttachments.emplace_back();
+        colorAttachment = VkRenderingAttachmentInfo {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView = view,
+            .imageLayout = imageLayout,
+            .loadOp = loadOp,
+            .storeOp = storeOp,
+            .clearValue = {
+                .color = {
+                    clearColor.r,
+                    clearColor.g,
+                    clearColor.b,
+                    clearColor.a,
+                },
+            },
+        };
+        return *this;
+    }
+
+    RenderPassBuilder& RenderPassBuilder::setDepthAttachment(VkImageView view,
+                                                             bool combinedDepthStencil,
+                                                             VkAttachmentLoadOp loadOp,
+                                                             float depthClear,
+                                                             std::uint32_t stencil,
+                                                             VkAttachmentStoreOp storeOp,
+                                                             VkImageLayout imageLayout) {
+        depthAttachment = VkRenderingAttachmentInfo {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView = view,
+            .imageLayout = imageLayout,
+            .loadOp = loadOp,
+            .storeOp = storeOp,
+            .clearValue = {
+                .depthStencil = {
+                    .depth = depthClear,
+                    .stencil = stencil,
+                },
+            },
+        };
+        this->combinedDepthStencil = combinedDepthStencil;
+        this->hasDepth = true;
+        return *this;
+    }
+
+    RenderPassBuilder& RenderPassBuilder::setStencilAttachment(VkImageView view,
+                                                               VkAttachmentLoadOp loadOp,
+                                                               std::uint32_t stencil,
+                                                               VkAttachmentStoreOp storeOp,
+                                                               VkImageLayout imageLayout) {
+        depthAttachment = VkRenderingAttachmentInfo {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView = view,
+            .imageLayout = imageLayout,
+            .loadOp = loadOp,
+            .storeOp = storeOp,
+            .clearValue = {
+                .depthStencil = {
+                    .stencil = stencil,
+                },
+            },
+        };
+        this->hasStencil = true;
+        this->combinedDepthStencil = false;
+        return *this;
+    }
+
+    RenderPass RenderPassBuilder::cmdBeginRendering(VkCommandBuffer cmd,
+                                                    VkExtent2D extent,
+                                                    VkOffset2D offset,
+                                                    std::uint32_t layerCount) {
+        VkRenderingInfo info = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+            .renderArea = {
+                offset,
+                extent,
+            },
+            .layerCount = layerCount,
+            .colorAttachmentCount = std::uint32_t(colorAttachments.size()),
+            .pColorAttachments = colorAttachments.data(),
+            .pDepthAttachment = hasDepth ? &depthAttachment : nullptr,
+        };
+        if(hasStencil) {
+            if(combinedDepthStencil) {
+                info.pStencilAttachment = &depthAttachment;
+            } else {
+                info.pStencilAttachment = &stencilAttachment;
+            }
+        }
+        vkCmdBeginRendering(cmd, &info);
+        
+        return RenderPass{cmd};
+    }
+
+    RenderPass::~RenderPass() {
+        vkCmdEndRendering(cmd);
     }
 }

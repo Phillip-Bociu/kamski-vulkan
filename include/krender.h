@@ -118,14 +118,25 @@ namespace kvk {
         std::deque<VkDescriptorImageInfo> imageInfos;
         std::deque<VkDescriptorBufferInfo> bufferInfos;
         std::vector<VkWriteDescriptorSet> writes;
+        int bindingCount;
+
+        DescriptorWriter();
 
         void writeImage(int binding,
                         VkImageView view,
                         VkSampler sampler,
                         VkImageLayout layout,
                         VkDescriptorType type);
+        void writeImage(VkImageView view,
+                        VkSampler sampler,
+                        VkImageLayout layout,
+                        VkDescriptorType type);
         void writeBuffer(int binding,
                          VkBuffer buffer,
+                         const std::uint64_t size,
+                         const std::uint64_t offset,
+                         VkDescriptorType type);
+        void writeBuffer(VkBuffer buffer,
                          const std::uint64_t size,
                          const std::uint64_t offset,
                          VkDescriptorType type);
@@ -135,7 +146,51 @@ namespace kvk {
                        VkDescriptorSet set);
     };
 
+    
+    struct RenderPass {
+        VkCommandBuffer cmd;
+        ~RenderPass();
+    };
+
+    struct RenderPassBuilder {
+        private:
+        std::vector<VkRenderingAttachmentInfo> colorAttachments;
+        VkRenderingAttachmentInfo              depthAttachment;
+        VkRenderingAttachmentInfo              stencilAttachment;
+        bool                                   combinedDepthStencil : 1;
+        bool                                   hasDepth             : 1;
+        bool                                   hasStencil           : 1;
+
+        public:
+        RenderPassBuilder();
+        RenderPassBuilder& addColorAttachment(VkImageView view,
+                                              VkAttachmentLoadOp loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                                              glm::vec4 clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
+                                              VkAttachmentStoreOp storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                                              VkImageLayout imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+        RenderPassBuilder& setDepthAttachment(VkImageView view,
+                                              bool combinedDepthStencil = true,
+                                              VkAttachmentLoadOp loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                                              float depthClear = 1.0f,
+                                              std::uint32_t stencil = 0,
+                                              VkAttachmentStoreOp storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                                              VkImageLayout imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+
+        RenderPassBuilder& setStencilAttachment(VkImageView view,
+                                                VkAttachmentLoadOp loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                                                std::uint32_t stencil = 0,
+                                                VkAttachmentStoreOp storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                                                VkImageLayout imageLayout = VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL);
+
+        [[nodiscard]] RenderPass cmdBeginRendering(VkCommandBuffer cmd,
+                                                   VkExtent2D extent,
+                                                   VkOffset2D offset = {0, 0},
+                                                   std::uint32_t layerCount = 1);
+    };
+
     struct DescriptorSetLayoutBuilder {
+        DescriptorSetLayoutBuilder();
         VkDescriptorSetLayoutBinding bindings[64];
         std::uint32_t bindingCount;
         
@@ -156,6 +211,8 @@ namespace kvk {
         std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
         std::optional<VkPipelineLayout> prebuiltLayout;
 
+        VkPipeline basePipeline;
+        
         VkFormat colorAttachmentFormat;
 
         VkPipelineLayoutCreateInfo layoutCreateInfo;
@@ -178,6 +235,7 @@ namespace kvk {
         PipelineBuilder& setDepthAttachmentFormat(VkFormat format);
         PipelineBuilder& setStencilAttachmentFormat(VkFormat format);
         PipelineBuilder& setPrebuiltLayout(VkPipelineLayout layout = VK_NULL_HANDLE);
+        PipelineBuilder& setBasePipeline(VkPipeline pipeline);
 
         PipelineBuilder& enableDepthTest(bool depthWriteEnable, VkCompareOp op);
         PipelineBuilder& enableStencilTest(VkCompareOp compareOp, bool enableWriting);

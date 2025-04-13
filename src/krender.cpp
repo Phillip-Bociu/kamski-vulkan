@@ -1,10 +1,8 @@
 #include "vulkan/vulkan_core.h"
-#include <bit>
 #include <cstdint>
 #include <limits>
 #include <mutex>
 #include <thread>
-#include <tracy/Tracy.hpp>
 
 #define VMA_IMPLEMENTATION
 #define GLM_ENABLE_EXPERIMENTAL

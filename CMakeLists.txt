@@ -34,6 +34,9 @@ ENDIF(KVK_DEBUG MATCHES ON)
 ###########################################################################################
 add_subdirectory(vma)
 add_subdirectory(glm)
+if(DEFINED PROFILE)
+    add_subdirectory(tracy)
+endif()
 
 ###########################################################################################
 # Globs
@@ -62,6 +65,19 @@ if (WIN32)
 else ()
     target_link_libraries(kamskiVk PUBLIC vulkan VulkanMemoryAllocator glm-header-only)
 endif ()
+
+if(DEFINED PROFILE)
+    message("PROFILER ENABLED")
+	option( TRACY_ENABLE "" ON)
+	option( TRACY_ON_DEMAND "" ON)
+    target_compile_definitions(kamskiVk PUBLIC PROFILER_ENABLED)
+    target_link_libraries(kamskiVk PUBLIC TracyClient)
+ELSE()
+	message("PROFILER DISABLED")
+	option( TRACY_ENABLE "" OFF)
+	option( TRACY_ON_DEMAND "" ON)
+endif()
+
 target_include_directories(kamskiVk PUBLIC ./include/ $ENV{VULKAN_SDK}/Include/)
 
 target_precompile_headers(kamskiVk PUBLIC

@@ -1,6 +1,25 @@
 #pragma once
 #include <stdio.h>
 
+#ifdef PROFILER_ENABLED
+
+#include <vulkan/vulkan_core.h>
+#include <tracy/Tracy.hpp>
+#include <tracy/TracyVulkan.hpp>
+#define KVK_PROFILE() ZoneScoped
+#define KVK_SET_THREAD_NAME(name) tracy::SetThreadName(name)
+#define KVK_FRAME_MARK() FrameMark
+#define KVK_GPU_ZONE(name) TracyGpuZone(name)
+
+#else
+
+#define KVK_GPU_ZONE(name)
+#define KVK_FRAME_MARK()
+#define KVK_PROFILE()
+#define KVK_SET_THREAD_NAME(name)
+
+#endif
+
 namespace kvk {
 
 #if defined(KVK_DEBUG) && !defined(logDebug)

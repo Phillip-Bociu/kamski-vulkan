@@ -1,6 +1,11 @@
 #include "vulkan/vulkan_core.h"
+#include <bit>
 #include <cstdint>
+#include <limits>
+#include <mutex>
 #include <thread>
+#include <tracy/Tracy.hpp>
+
 #define VMA_IMPLEMENTATION
 #define GLM_ENABLE_EXPERIMENTAL
 #include "common.h"
@@ -61,6 +66,7 @@ namespace kvk {
                                             RendererState& state,
                                             const std::uint32_t* shaderContents,
                                             const std::uint64_t shaderSize) {
+        KVK_PROFILE();
         VkShaderModuleCreateInfo createInfo = {
             .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
             .codeSize = shaderSize,
@@ -80,6 +86,7 @@ namespace kvk {
     ReturnCode createShaderModuleFromFile(VkShaderModule& shaderModule,
                                           RendererState& state,
                                           const char* shaderPath) {
+        KVK_PROFILE();
         std::ifstream vs(shaderPath, std::ios::ate | std::ios::binary);
         if(!vs.is_open()) {
             logError("File %s not found", shaderPath);
@@ -98,6 +105,7 @@ namespace kvk {
     }
 
     ReturnCode init(RendererState& state, const InitSettings* settings) {
+        KVK_PROFILE();
         /*===========================
                 User settings
           ===========================*/
@@ -119,7 +127,8 @@ namespace kvk {
           =====================================*/
 #ifdef KVK_DEBUG
         const char* desiredLayers[] = {
-        "VK_LAYER_KHRONOS_validation",
+            "VK_LAYER_KHRONOS_validation",
+            "VK_LAYER_KHRONOS_synchronization2",
         };
 
         std::uint32_t layerCount = 0;
@@ -188,8 +197,8 @@ namespace kvk {
 #ifdef KVK_DEBUG
         VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = {
             .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-            .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-            .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+            .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+            .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT| VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
             .pfnUserCallback = debugCallback,
             .pUserData = nullptr,
         };
@@ -232,6 +241,7 @@ namespace kvk {
         std::vector<VkPresentModeKHR> surfacePresentModes;
         std::vector<VkSurfaceFormatKHR> surfaceFormats;
         VkSurfaceCapabilitiesKHR surfaceCapabilities;
+        std::vector<VkQueueFamilyProperties> queueFamilies;
 
 
         std::uint32_t deviceCount = 0;
@@ -250,6 +260,7 @@ namespace kvk {
                 bool presentFamilyFound = false;
                 bool computeFamilyFound = false;
                 bool transferFamilyFound = false;
+                bool dedicatedTransfer = false;
 
                 std::uint32_t extensionCount = 0;
                 vkEnumerateDeviceExtensionProperties(pd, nullptr, &extensionCount, nullptr);
@@ -273,20 +284,30 @@ namespace kvk {
 
                 std::uint32_t queueFamilyCount = 0;
                 vkGetPhysicalDeviceQueueFamilyProperties(pd, &queueFamilyCount, nullptr);
-
-                std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+                queueFamilies.resize(queueFamilyCount);
                 vkGetPhysicalDeviceQueueFamilyProperties(pd, &queueFamilyCount, queueFamilies.data());
 
                 std::uint32_t i = 0;
                 for(const VkQueueFamilyProperties& qf : queueFamilies) {
-                    if(!graphicsFamilyFound && qf.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-                        state.graphicsFamilyIndex = i;
-                        graphicsFamilyFound = true;
+                    logInfo("Qfam[%u] queue flags: %u", i, qf.queueFlags);
+                    if(qf.queueFlags & VK_QUEUE_TRANSFER_BIT) {
+                        logInfo("Qfam[%u] supports TRANSFER", i);
+                        if(!transferFamilyFound || !dedicatedTransfer) {
+                            if(qf.queueFlags == VK_QUEUE_TRANSFER_BIT || qf.queueFlags == (VK_QUEUE_TRANSFER_BIT | VK_QUEUE_SPARSE_BINDING_BIT)) {
+                                logInfo("Qfam[%u] DEDICATED TRANSFER", i);
+                                dedicatedTransfer = true;
+                            }
+                            state.transferFamilyIndex = i;
+                            transferFamilyFound = true;
+                        } 
                     }
 
-                    if(!transferFamilyFound && qf.queueFlags & VK_QUEUE_TRANSFER_BIT) {
-                        state.transferFamilyIndex = i;
-                        transferFamilyFound = true;
+                    if(qf.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+                        logInfo("Qfam[%u] supports GRAPHICS", i);
+                        if(!graphicsFamilyFound) {
+                            state.graphicsFamilyIndex = i;
+                            graphicsFamilyFound = true;
+                        }
                     }
 
                     if(!presentFamilyFound) {
@@ -328,6 +349,9 @@ namespace kvk {
                                                           state.surface,
                                                           &surfaceCapabilities);
 
+                if(!dedicatedTransfer) {
+                    logWarning("No dedidcated transfer queue family present");
+                }
                 state.physicalDevice = pd;
                 break;
             }
@@ -338,29 +362,35 @@ namespace kvk {
             return ReturnCode::DEVICE_NOT_FOUND;
         }
 
-
         /*=====================================
                 Logical device creation
           =====================================*/
         state.device = VK_NULL_HANDLE;
 
+            logInfo("GraphicsFamilyIndex: %u", state.graphicsFamilyIndex);
+            logInfo("PresentFamilyIndex: %u", state.presentFamilyIndex);
+            logInfo("ComputeFamilyIndex: %u", state.computeFamilyIndex);
+            logInfo("TransferFamilyIndex: %u", state.transferFamilyIndex);
         const std::set<std::uint32_t> uniqueQueueFamilies = {
             state.graphicsFamilyIndex,
             state.presentFamilyIndex,
-            state.computeFamilyIndex
+            state.computeFamilyIndex,
+            state.transferFamilyIndex
         };
         std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
         queueCreateInfos.reserve(uniqueQueueFamilies.size());
 
-        float queuePriority = 1.0f;
+        float queuePriority[1] = {
+            1.0f,
+        };
+
         for(std::uint32_t qFam : uniqueQueueFamilies) {
             VkDeviceQueueCreateInfo queueCreateInfo = {
                 .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
                 .queueFamilyIndex = qFam,
                 .queueCount = 1,
-                .pQueuePriorities = &queuePriority,
+                .pQueuePriorities = queuePriority,
             };
-
             queueCreateInfos.push_back(queueCreateInfo);
         }
 
@@ -422,25 +452,18 @@ namespace kvk {
         }
         logDebug("Logical device created");
 
-        vkGetDeviceQueue(state.device,
-                         state.transferFamilyIndex,
-                         0,
-                         &state.transferQueue);
-
-        vkGetDeviceQueue(state.device,
-                         state.graphicsFamilyIndex,
-                         0,
-                         &state.graphicsQueue);
-
-        vkGetDeviceQueue(state.device,
-                         state.presentFamilyIndex,
-                         0,
-                         &state.presentQueue);
-
-        vkGetDeviceQueue(state.device,
-                         state.computeFamilyIndex,
-                         0,
-                         &state.computeQueue);
+        state.queues = new Queue[uniqueQueueFamilies.size()];
+        state.queueCount = uniqueQueueFamilies.size();
+        std::uint32_t i = 0;
+        for(std::uint32_t qFam : uniqueQueueFamilies) {
+            if(createQueue(state.queues[i],
+                           state,
+                           queueFamilies[qFam].queueFlags,
+                           qFam) != ReturnCode::OK) {
+                return ReturnCode::UNKNOWN;
+            }
+            i++;
+        }
 
         /*=====================================
                     Vma initialization
@@ -526,43 +549,6 @@ namespace kvk {
         }
         logInfo("Created swapchain");
 
-        VkCommandPoolCreateInfo commandPoolCreateInfo = {
-            .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-            .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-            .queueFamilyIndex = state.graphicsFamilyIndex,
-        };
-        if(vkCreateCommandPool(state.device,
-                               &commandPoolCreateInfo,
-                               nullptr,
-                               &state.commandPool) != VK_SUCCESS) {
-            logError("Could not create command pool");
-            return ReturnCode::UNKNOWN;
-        }
-        logInfo("Created command pool");
-
-        VkCommandBufferAllocateInfo cbufferAllocInfo = {
-            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-            .commandPool = state.commandPool,
-            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-            .commandBufferCount = MAX_IN_FLIGHT_FRAMES + 4
-        };
-        VkCommandBuffer cBuffers[MAX_IN_FLIGHT_FRAMES + 4];
-
-        if(vkAllocateCommandBuffers(state.device,
-                                    &cbufferAllocInfo,
-                                    cBuffers) != VK_SUCCESS) {
-            logError("Could not allocate cbuffers");
-            return ReturnCode::UNKNOWN;
-        }
-
-        for(int i = 0; i != MAX_IN_FLIGHT_FRAMES; i++) {
-            state.frames[i].commandBuffer = cBuffers[i];
-        }
-
-        for(int i = MAX_IN_FLIGHT_FRAMES; i != MAX_IN_FLIGHT_FRAMES + 4; i++) {
-            state.transferCommandBuffers[i - MAX_IN_FLIGHT_FRAMES] = cBuffers[i];
-        }
-
         VkSemaphoreCreateInfo semaphoreCreateInfo = {
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
         };
@@ -581,45 +567,24 @@ namespace kvk {
             }
         }
 
-        const uint32_t magenta = glm::packUnorm4x8(glm::vec4(1, 0, 1, 1));
-        const uint32_t black = glm::packUnorm4x8(glm::vec4(0, 0, 0, 1));
-        const uint32_t white = glm::packUnorm4x8(glm::vec4(1, 1, 1, 1));
-        std::uint32_t pixels[16 * 16];
-        for(std::uint32_t y = 0; y != 16; y++) {
-            for(std::uint32_t x = 0; x != 16; x++) {
-                pixels[y * 16 + x] = ((x & 1) ^ (y & 1)) ? magenta : black;
-                //pixels[y * 16 + x] = white;
-            }
-        }
-
-        rc = createImage(state.errorTexture,
-                         state,
-                         pixels,
-                         VK_FORMAT_R8G8B8A8_UNORM,
-                         VkExtent3D{16, 16, 1},
-                         VK_IMAGE_USAGE_SAMPLED_BIT |
-                         VK_IMAGE_USAGE_TRANSFER_DST_BIT);
-        if(rc != ReturnCode::OK) {
-            logError("Could not create the error texture");
-            return rc;
-        }
-
-        VkSamplerCreateInfo samplerCreateInfo {
-            .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-            .magFilter = VK_FILTER_NEAREST,
-            .minFilter = VK_FILTER_NEAREST,
+        PoolInfo poolInfo = lockCommandPool(state, VK_QUEUE_GRAPHICS_BIT);
+        defer {
+            unlockCommandPool(state, poolInfo);
         };
-        VK_CHECK(vkCreateSampler(state.device, &samplerCreateInfo, nullptr, &state.sampler));
 
-        VK_CHECK(immediateSubmit(state.transferCommandBuffers[0],
-                        state.device,
-                        state.transferQueue,
-                        state.transferQueueMutex,
-                        [&](VkCommandBuffer cmd) {
+        VK_CHECK(immediateSubmit(poolInfo.queue->commandBuffers[poolInfo.poolIndex],
+                                 state.device,
+                                 poolInfo.queue->handle,
+                                 poolInfo.queue->submitMutex,
+                                 [&](VkCommandBuffer cmd) {
+            KVK_PROFILE();
             transitionImage(cmd,
                             state.depthImage.image,
                             VK_IMAGE_LAYOUT_UNDEFINED,
-                            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+                            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                            VK_PIPELINE_STAGE_2_NONE,
+                            0,
+                            VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT);
         }));
 
         return ReturnCode::OK;
@@ -631,6 +596,7 @@ namespace kvk {
                                VkPresentModeKHR presentMode,
                                std::uint32_t imageCount,
                                VkSwapchainKHR oldSwapchain) {
+        KVK_PROFILE();
         state.swapchainExtent = extent;
         state.swapchainImageFormat = format;
         state.swapchainPresentMode = presentMode;
@@ -750,6 +716,7 @@ namespace kvk {
     ReturnCode recreateSwapchain(RendererState& state,
                                  const std::uint32_t x,
                                  const std::uint32_t y) {
+        KVK_PROFILE();
         vkDeviceWaitIdle(state.device);
         if(x == 0 || y == 0) {
             state.swapchainExtent.width = x;
@@ -801,11 +768,17 @@ namespace kvk {
                               oldSwapchain,
                               nullptr);
 
-        VK_CHECK(immediateSubmit(state.transferCommandBuffers[0],
+        PoolInfo poolInfo = lockCommandPool(state, VK_QUEUE_GRAPHICS_BIT);
+        defer {
+            unlockCommandPool(state, poolInfo);
+        };
+
+        VK_CHECK(immediateSubmit(poolInfo.queue->commandBuffers[poolInfo.poolIndex],
                                  state.device,
-                                 state.transferQueue,
-                                 state.transferQueueMutex,
+                                 poolInfo.queue->handle,
+                                 poolInfo.queue->submitMutex,
                                  [&](VkCommandBuffer cmd) {
+                                     KVK_PROFILE();
                                      transitionImage(cmd,
                                                      state.depthImage.image,
                                                      VK_IMAGE_LAYOUT_UNDEFINED,
@@ -830,7 +803,6 @@ namespace kvk {
             .viewportCount = 1,
             .scissorCount = 1,
         };
-
 
         inputAssembly = {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
@@ -1017,6 +989,7 @@ namespace kvk {
 
     ReturnCode PipelineBuilder::build(Pipeline& pipeline,
                                       const VkDevice device) {
+        KVK_PROFILE();
         if(!prebuiltLayout) {
             VkPipelineLayoutCreateInfo layoutCreateInfo = {
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -1079,6 +1052,7 @@ namespace kvk {
                             std::uint64_t size,
                             VkBufferUsageFlags bufferUsage,
                             VmaMemoryUsage memoryUsage) {
+        KVK_PROFILE();
         VkBufferCreateInfo bufferCreateInfo = {
             .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
             .size = size,
@@ -1104,6 +1078,7 @@ namespace kvk {
 
     void destroyBuffer(AllocatedBuffer& buffer,
                        VmaAllocator allocator) {
+        KVK_PROFILE();
         vmaDestroyBuffer(allocator,
                          buffer.buffer,
                          buffer.allocation);
@@ -1115,6 +1090,7 @@ namespace kvk {
                            const VkExtent3D extent,
                            const VkImageUsageFlags usageFlags,
                            bool isCubemap) {
+        KVK_PROFILE();
         VkImageCreateInfo imageInfo = imageCreateInfo(state.physicalDevice,
                                                       format,
                                                       usageFlags,
@@ -1150,6 +1126,7 @@ namespace kvk {
                 aspect = VK_IMAGE_ASPECT_COLOR_BIT;
             } break;
         }
+
         VkImageViewCreateInfo imageViewInfo = imageViewCreateInfo(format,
                                                                   image.image,
                                                                   aspect,
@@ -1172,13 +1149,8 @@ namespace kvk {
                            const VkFormat format,
                            const VkExtent3D extent,
                            const VkImageUsageFlags usage) {
+        KVK_PROFILE();
         const VkImageUsageFlags usageFlags = usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-        const static std::thread::id threadId = std::this_thread::get_id();
-        if(std::this_thread::get_id() != threadId) {
-            logError("I am not yet thread-safe :(");
-            //return ReturnCode::UNKNOWN;
-        }
-        
         const std::uint64_t size = extent.width * extent.height * extent.depth * 4;
         AllocatedBuffer stagingBuffer;
         ReturnCode rc = createBuffer(stagingBuffer,
@@ -1205,10 +1177,14 @@ namespace kvk {
         }
 
         auto transferFunc = [&](VkCommandBuffer cmd) {
+        KVK_PROFILE();
             transitionImage(cmd,
                             image.image,
                             VK_IMAGE_LAYOUT_UNDEFINED,
-                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 
+                            VK_PIPELINE_STAGE_2_NONE,
+                            0,
+                            VK_PIPELINE_STAGE_2_TRANSFER_BIT);
 
             VkBufferImageCopy copyRegion = {
                 .bufferOffset = 0,
@@ -1233,14 +1209,22 @@ namespace kvk {
             transitionImage(cmd,
                             image.image,
                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                            VK_ACCESS_2_MEMORY_WRITE_BIT,
+                            VK_PIPELINE_STAGE_2_NONE,
+                            0);
         };
 
-        VkResult res = immediateSubmit(state.transferCommandBuffers[0],
-                                       state.device,
-                                       state.transferQueue,
-                                       state.transferQueueMutex,
-                                       transferFunc);
+        PoolInfo poolInfo = lockCommandPool(state, VK_QUEUE_TRANSFER_BIT);
+        defer {
+            unlockCommandPool(state, poolInfo);
+        };
+        VkResult res = kvk::immediateSubmit(poolInfo.queue->commandBuffers[poolInfo.poolIndex],
+                                            state.device,
+                                            poolInfo.queue->handle,
+                                            poolInfo.queue->submitMutex,
+                                            transferFunc);
         if(res != VK_SUCCESS) {
             logError("transfer failed: %d", res);
             return ReturnCode::UNKNOWN;
@@ -1257,14 +1241,9 @@ namespace kvk {
                              const VkFormat format,
                              const VkExtent2D extent,
                              VkImageUsageFlags usage) {
+        KVK_PROFILE();
         const VkImageUsageFlags usageFlags = usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
-        const static std::thread::id threadId = std::this_thread::get_id();
-        if(std::this_thread::get_id() != threadId) {
-            logError("I am not yet thread-safe :(");
-            //return ReturnCode::UNKNOWN;
-        }
-        
         const std::uint64_t size = extent.width * extent.height * 6 * 4;
         const std::uint64_t imageSize = extent.width * extent.height * 4;
 
@@ -1302,10 +1281,14 @@ namespace kvk {
         }
 
         auto transferFunc = [&](VkCommandBuffer cmd) {
+            KVK_PROFILE();
             transitionImage(cmd,
                             image.image,
                             VK_IMAGE_LAYOUT_UNDEFINED,
-                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 
+                            VK_PIPELINE_STAGE_2_NONE,
+                            0,
+                            VK_PIPELINE_STAGE_2_TRANSFER_BIT);
 
             VkBufferImageCopy copyRegion = {
                 .bufferOffset = 0,
@@ -1334,14 +1317,22 @@ namespace kvk {
             transitionImage(cmd,
                             image.image,
                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                            VK_ACCESS_2_MEMORY_WRITE_BIT,
+                            VK_PIPELINE_STAGE_2_NONE,
+                            0);
         };
 
-        VkResult res = immediateSubmit(state.transferCommandBuffers[0],
-                                       state.device,
-                                       state.transferQueue,
-                                       state.transferQueueMutex,
-                                       transferFunc);
+        PoolInfo poolInfo = lockCommandPool(state, VK_QUEUE_TRANSFER_BIT);
+        defer {
+            unlockCommandPool(state, poolInfo);
+        };
+        VkResult res = kvk::immediateSubmit(poolInfo.queue->commandBuffers[poolInfo.poolIndex],
+                                            state.device,
+                                            poolInfo.queue->handle,
+                                            poolInfo.queue->submitMutex,
+                                            transferFunc);
         if(res != VK_SUCCESS) {
             logError("transfer failed: %d", res);
             return ReturnCode::UNKNOWN;
@@ -1353,6 +1344,7 @@ namespace kvk {
     void destroyImage(AllocatedImage& image,
                       VkDevice device,
                       VmaAllocator allocator) {
+        KVK_PROFILE();
         vkDestroyImageView(device,
                            image.view,
                            nullptr);
@@ -1365,6 +1357,7 @@ namespace kvk {
     void DescriptorAllocator::init(VkDevice device,
                                    std::uint32_t initialSets,
                                    std::span<PoolSizeRatio> poolRatios) {
+        KVK_PROFILE();
         ratios.clear();
         VkDescriptorPool newPool = createPool(device, initialSets, poolRatios);
         setsPerPool = initialSets * 1.5f;
@@ -1372,6 +1365,7 @@ namespace kvk {
     }
 
     VkDescriptorPool DescriptorAllocator::getPool(VkDevice device) {
+        KVK_PROFILE();
         VkDescriptorPool retval;
 
         if(!readyPools.empty()) {
@@ -1390,6 +1384,7 @@ namespace kvk {
     VkDescriptorPool DescriptorAllocator::createPool(VkDevice device,
                                                         const std::uint32_t setCount,
                                                         const std::span<PoolSizeRatio> poolRatios) {
+        KVK_PROFILE();
         std::vector<VkDescriptorPoolSize> poolSizes;
         for(const PoolSizeRatio& ratio : poolRatios) {
             poolSizes.push_back(VkDescriptorPoolSize {
@@ -1414,6 +1409,7 @@ namespace kvk {
     }
 
     void DescriptorAllocator::clearPools(VkDevice device) {
+        KVK_PROFILE();
         for(auto p : readyPools) {
             vkResetDescriptorPool(device,
                                     p,
@@ -1430,6 +1426,7 @@ namespace kvk {
     }
 
     void DescriptorAllocator::destroyPools(VkDevice device) {
+        KVK_PROFILE();
         for(auto p : readyPools) {
             vkDestroyDescriptorPool(device,
                                     p,
@@ -1449,6 +1446,7 @@ namespace kvk {
                                             VkDevice device,
                                             VkDescriptorSetLayout layout,
                                             void* pNext) {
+        KVK_PROFILE();
         VkDescriptorPool poolToUse = getPool(device);
 
         VkDescriptorSetAllocateInfo allocInfo = {
@@ -1490,6 +1488,7 @@ namespace kvk {
                                        const std::uint64_t size,
                                        const std::uint64_t offset,
                                        VkDescriptorType type) {
+        KVK_PROFILE();
         auto& info = bufferInfos.emplace_back(VkDescriptorBufferInfo{
             .buffer = buffer,
             .offset = offset,
@@ -1520,6 +1519,7 @@ namespace kvk {
                                         VkSampler sampler,
                                         VkImageLayout layout,
                                         VkDescriptorType type) {
+        KVK_PROFILE();
         auto& info = imageInfos.emplace_back(VkDescriptorImageInfo{
             .sampler = sampler,
             .imageView = view,
@@ -1547,6 +1547,7 @@ namespace kvk {
 
     void DescriptorWriter::updateSet(VkDevice device,
                                         VkDescriptorSet set) {
+        KVK_PROFILE();
         for(auto& write : writes) {
             write.dstSet = set;
         }
@@ -1559,6 +1560,7 @@ namespace kvk {
     }
 
     FrameData* startFrame(RendererState& state, std::uint32_t& frameIndex) {
+        KVK_PROFILE();
         frameIndex = state.currentFrame;
         FrameData& frame = state.frames[state.currentFrame];
         vkWaitForFences(state.device,
@@ -1595,10 +1597,20 @@ namespace kvk {
             logError("Something gone wrong: %d", result);
             return nullptr;
         }
+
+        PoolInfo poolInfo = lockCommandPool(state, VK_QUEUE_GRAPHICS_BIT);
+        frame.commandBuffer = poolInfo.queue->commandBuffers[poolInfo.poolIndex];
+        frame.queue = poolInfo.queue;
+        frame.inFlightFence = poolInfo.queue->fences[poolInfo.poolIndex];
+        frame.deletionQueue.emplace_back([&state, poolInfo]() mutable {
+            unlockCommandPool(state, poolInfo);
+        });
+
         return &frame;
     }
 
     ReturnCode endFrame(RendererState& state, FrameData& frame) {
+        KVK_PROFILE();
         state.currentFrame = (state.currentFrame + 1) % MAX_IN_FLIGHT_FRAMES;
         VkSemaphore waitSemaphores[] = {
             frame.imageAvailableSemaphore
@@ -1622,10 +1634,11 @@ namespace kvk {
             .pSignalSemaphores = signalSemaphores
         };
 
-        if(vkQueueSubmit(state.graphicsQueue,
-                            1,
-                            &submitInfo,
-                            frame.inFlightFence) != VK_SUCCESS) {
+        std::lock_guard lck (frame.queue->submitMutex);
+        if(vkQueueSubmit(frame.queue->handle,
+                         1,
+                         &submitInfo,
+                         frame.inFlightFence) != VK_SUCCESS) {
             logError("Queue submit failed");
             return ReturnCode::UNKNOWN;
         }
@@ -1640,7 +1653,7 @@ namespace kvk {
             .pResults = nullptr
         };
 
-        VkResult result = vkQueuePresentKHR(state.presentQueue, &presentInfo);
+        VkResult result = vkQueuePresentKHR(frame.queue->handle, &presentInfo);
         if (result == VK_ERROR_OUT_OF_DATE_KHR) {
             return ReturnCode::UNKNOWN;
         } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
@@ -1654,6 +1667,7 @@ namespace kvk {
                           RendererState& state,
                           std::span<std::uint32_t> indices,
                           std::span<std::uint8_t> vertices) {
+        KVK_PROFILE();
         const std::uint64_t vertexBufferSize = vertices.size();
         const std::uint64_t indexBufferSize = indices.size_bytes();
         mesh.indexCount = indices.size();
@@ -1714,6 +1728,7 @@ namespace kvk {
         vmaUnmapMemory(state.allocator, stagingBuffer.allocation);
 
         auto transferFunc = [&](VkCommandBuffer cmd) {
+            KVK_PROFILE();
             VkBufferCopy vertexCopy{ 0 };
             vertexCopy.dstOffset = 0;
             vertexCopy.srcOffset = 0;
@@ -1737,10 +1752,14 @@ namespace kvk {
                 &indexCopy);
         };
 
-        vkResult = kvk::immediateSubmit(state.transferCommandBuffers[0],
+        PoolInfo poolInfo = lockCommandPool(state, VK_QUEUE_TRANSFER_BIT);
+        defer {
+            unlockCommandPool(state, poolInfo);
+        };
+        vkResult = kvk::immediateSubmit(poolInfo.queue->commandBuffers[poolInfo.poolIndex],
                                         state.device,
-                                        state.transferQueue,
-                                        state.transferQueueMutex,
+                                        poolInfo.queue->handle,
+                                        poolInfo.queue->submitMutex,
                                         transferFunc);
 
         if(vkResult != VK_SUCCESS) {
@@ -1778,6 +1797,7 @@ namespace kvk {
     bool DescriptorSetLayoutBuilder::build(VkDescriptorSetLayout& layout,
                                            VkDevice device,
                                            VkShaderStageFlags stage) {
+        KVK_PROFILE();
         if(kvk::createDescriptorSetLayout(layout,
                                           device,
                                           stage,
@@ -1870,6 +1890,7 @@ namespace kvk {
                                                     VkExtent2D extent,
                                                     VkOffset2D offset,
                                                     std::uint32_t layerCount) {
+        KVK_PROFILE();
         VkRenderingInfo info = {
             .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
             .renderArea = {
@@ -1895,5 +1916,116 @@ namespace kvk {
 
     RenderPass::~RenderPass() {
         vkCmdEndRendering(cmd);
+    }
+
+    ReturnCode createQueue(Queue& queue,
+                           RendererState& state,
+                           const VkQueueFlags flags,
+                           const std::uint32_t queueFamilyIndex) {
+        KVK_PROFILE();
+        vkGetDeviceQueue(state.device, queueFamilyIndex, 0, &queue.handle);
+        queue.familyIndex = queueFamilyIndex;
+
+        VkCommandPoolCreateInfo commandPoolCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+            .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+            .queueFamilyIndex = queueFamilyIndex,
+        };
+        const std::uint32_t coreCount = std::thread::hardware_concurrency();
+        queue.freePoolCount = coreCount;
+        queue.isSlotOccupied.resize(coreCount, false);
+        queue.pools.resize(coreCount);
+        queue.commandBuffers.resize(coreCount);
+        queue.fences.resize(coreCount);
+
+        for(VkCommandPool& pool : queue.pools) {
+            if(vkCreateCommandPool(state.device,
+                                   &commandPoolCreateInfo,
+                                   nullptr,
+                                   &pool) != VK_SUCCESS) {
+                logError("Could not create command pool");
+                return ReturnCode::UNKNOWN;
+            }
+        }
+
+        VkCommandBufferAllocateInfo allocInfo = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        };
+        for(std::uint32_t i = 0; i != coreCount; i++) {
+            allocInfo.commandPool = queue.pools[i];
+            allocInfo.commandBufferCount = 1;
+
+            if(vkAllocateCommandBuffers(state.device,
+                                        &allocInfo,
+                                        &queue.commandBuffers[i]) != VK_SUCCESS) {
+                logError("Could not allocate cbuffers");
+                return ReturnCode::UNKNOWN;
+            }
+        }
+
+        VkFenceCreateInfo fenceCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+        };
+        for(VkFence& fence : queue.fences) {
+            if(vkCreateFence(state.device, &fenceCreateInfo, nullptr, &fence) != VK_SUCCESS) {
+                return ReturnCode::UNKNOWN;
+            }
+        }
+
+        return ReturnCode::OK;
+    }
+
+    PoolInfo lockCommandPool(RendererState& state, VkQueueFlags desiredQueueFlags) {
+        KVK_PROFILE();
+        //std::uint32_t familyIndex = 0;
+        //std::uint32_t bestScore = std::numeric_limits<std::uint32_t>::max();
+        //const std::uint32_t maxScore = std::popcount(desiredQueueFlags);
+
+        //for(std::uint32_t qIndex = 0; qIndex != state.queueCount; qIndex++) {
+        //    if((state.queues[qIndex].flags & desiredQueueFlags) != desiredQueueFlags) {
+        //        continue;
+        //    }
+        //    // popcount counts the '1' bits
+        //    const std::uint32_t score = maxScore - std::popcount(state.queues[qIndex].flags ^ desiredQueueFlags);
+        //    if(score < bestScore) {
+        //        bestScore = score;
+        //        familyIndex = qIndex;
+        //    }
+        //}
+        //assert(bestScore != std::numeric_limits<std::uint32_t>::max());
+        std::uint32_t familyIndex;
+        if(desiredQueueFlags & VK_QUEUE_TRANSFER_BIT) {
+            familyIndex = 1;
+        } else {
+            familyIndex = 0;
+        }
+        Queue& queue = state.queues[familyIndex];
+
+        std::unique_lock lck(queue.poolMutex);
+        if(queue.freePoolCount == 0) {
+            queue.poolCvar.wait(lck, [&]() { return queue.freePoolCount != 0; });
+        }
+        for(std::uint32_t slotIndex = 0; slotIndex != queue.isSlotOccupied.size(); slotIndex++) {
+            if(!queue.isSlotOccupied[slotIndex]) {
+                queue.isSlotOccupied[slotIndex] = true;
+                queue.freePoolCount--;
+                //logInfo("Qfam: %u, index: %u", queue.familyIndex, slotIndex);
+                return {&queue, slotIndex};
+            }
+        }
+        assert(false);
+        return {};
+    }
+
+    void unlockCommandPool(RendererState& state, PoolInfo& poolInfo) {
+        KVK_PROFILE();
+        std::lock_guard lck(poolInfo.queue->poolMutex);
+        assert(poolInfo.queue->isSlotOccupied.size() > poolInfo.poolIndex);
+        assert(poolInfo.queue->isSlotOccupied[poolInfo.poolIndex]);
+        assert(poolInfo.queue->freePoolCount != std::thread::hardware_concurrency());
+        poolInfo.queue->isSlotOccupied[poolInfo.poolIndex] = false;
+        poolInfo.queue->freePoolCount++;
+        poolInfo.queue->poolCvar.notify_one();
     }
 }

@@ -1,3 +1,4 @@
+#include "common.h"
 #include "utils.h"
 #include "vulkan/vulkan_core.h"
 
@@ -16,6 +17,7 @@ namespace kvk {
 										 VkShaderStageFlags shaderFlags,
 										 std::span<VkDescriptorSetLayoutBinding> bindings,
 										 VkDescriptorSetLayoutCreateFlags flags) {
+        KVK_PROFILE();
 		for(auto& binding : bindings) {
 			binding.stageFlags |= shaderFlags;
 		}
@@ -41,6 +43,7 @@ namespace kvk {
 									VkDevice device,
 									VkDescriptorPoolSize* sizes,
 									const std::uint32_t sizeCount) {
+        KVK_PROFILE();
 		std::uint32_t maxSets = 0;
 		for(std::uint32_t i = 0; i != sizeCount; i++) {
 			maxSets += sizes[i].descriptorCount;
@@ -67,6 +70,7 @@ namespace kvk {
 									 VkDescriptorPool pool,
 									 VkDevice device,
 									 VkDescriptorSetLayout layout) {
+        KVK_PROFILE();
 		VkDescriptorSetAllocateInfo allocInfo = {
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
 			.descriptorPool = pool,
@@ -98,17 +102,22 @@ namespace kvk {
 	void transitionImage(VkCommandBuffer cmd,
 						 VkImage image,
 						 VkImageLayout currentLayout,
-						 VkImageLayout newLayout) {
-		VkImageMemoryBarrier2 imageBarrier {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
-		imageBarrier.pNext = nullptr;
+                         VkImageLayout newLayout,
+                         VkPipelineStageFlags2 srcStageMask,
+                         VkAccessFlags2 srcAccessMask,
+                         VkPipelineStageFlags2 dstStageMask,
+                         VkAccessFlags2 dstAccessMask) {
+        KVK_PROFILE();
+		VkImageMemoryBarrier2 imageBarrier = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+            .srcStageMask = srcStageMask,
+            .srcAccessMask = srcAccessMask,
+            .dstStageMask = dstStageMask,                                   
+            .dstAccessMask = dstAccessMask,
+            .oldLayout = currentLayout,
+            .newLayout = newLayout,
+        };
 
-		imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-		imageBarrier.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
-		imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-		imageBarrier.dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
-
-		imageBarrier.oldLayout = currentLayout;
-		imageBarrier.newLayout = newLayout;
 
 		VkImageAspectFlags aspectMask;
 		if(newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL) {
@@ -137,6 +146,7 @@ namespace kvk {
 									  VkImageUsageFlags usageFlags,
 									  VkExtent3D extent,
                                       std::uint32_t arrayLayerCount) {
+        KVK_PROFILE();
         const VkImageType imageType = (extent.depth == 1 ? VK_IMAGE_TYPE_2D : VK_IMAGE_TYPE_3D);
 
 		VkPhysicalDeviceImageFormatInfo2 imageFormatInfo = {
@@ -190,6 +200,7 @@ namespace kvk {
 						  VkExtent2D dstExtent,
                           bool srcIsDepth,
                           bool dstIsDepth) {
+        KVK_PROFILE();
   		VkImageBlit2 blitRegion = {
  			.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2,
 
@@ -234,6 +245,7 @@ namespace kvk {
 							 VkQueue queue,
                              std::mutex& queueMutex,
 							 std::function<void(VkCommandBuffer)>&& function) {
+        KVK_PROFILE();
 		VkResult retval;
 		VkCommandBufferBeginInfo beginInfo = {
 			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -268,8 +280,6 @@ namespace kvk {
 			logError("Could not end command buffer");
 			return retval;
 		}
-
-		const VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 
 		VkSubmitInfo submitInfo = {
 			.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,

@@ -2,7 +2,6 @@
 #include "glm/fwd.hpp"
 #include "vulkan/vulkan_core.h"
 #include <mutex>
-#include <type_traits>
 
 #if !defined(KVK_GLFW)
 #if defined(_WIN32)
@@ -251,19 +250,6 @@ namespace kvk {
                          const VkDevice device);
     };
 
-    struct FrameData {
-        std::uint32_t swapchainImageIndex;
-
-        VkFence inFlightFence;
-        VkCommandBuffer commandBuffer;
-        VkSemaphore imageAvailableSemaphore;
-        VkSemaphore renderFinishedSemaphore;
-
-        DescriptorAllocator descriptors;
-
-        std::vector<std::function<void()>> deletionQueue;
-    };
-
     struct Mesh {
         AllocatedBuffer indices;
         AllocatedBuffer vertices;
@@ -306,7 +292,43 @@ namespace kvk {
         std::uint32_t firstIndex;
     };
 
-    static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 1;
+    struct Queue {
+        VkQueue handle;
+        std::mutex submitMutex;
+        std::mutex poolMutex;
+        std::condition_variable poolCvar;
+        std::vector<bool> isSlotOccupied;
+        std::vector<VkCommandPool> pools;
+        std::vector<VkCommandBuffer> commandBuffers;
+        std::vector<VkFence> fences;
+
+        std::uint32_t familyIndex;
+        std::uint32_t freePoolCount;
+        VkQueueFlags flags;
+    };
+
+    struct PoolInfo {
+        Queue* queue;
+        std::uint32_t poolIndex;
+    };
+
+    struct FrameData {
+        std::uint32_t swapchainImageIndex;
+
+        Queue* queue;
+        VkFence inFlightFence;
+        VkCommandBuffer commandBuffer;
+
+        VkSemaphore imageAvailableSemaphore;
+        VkSemaphore renderFinishedSemaphore;
+
+        DescriptorAllocator descriptors;
+
+        std::vector<std::function<void()>> deletionQueue;
+    };
+
+
+    static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 3;
     struct RendererState {
         std::uint32_t currentFrame;
 
@@ -320,29 +342,15 @@ namespace kvk {
         std::uint32_t presentFamilyIndex;
         std::uint32_t computeFamilyIndex;
 
-        VkSampler sampler;
-        VkCommandPool commandPool;
-
-        VkQueue transferQueue;
-        std::mutex transferQueueMutex;
-
-        VkQueue graphicsQueue;
-        std::mutex graphicsQueueMutex;
-
-        VkQueue presentQueue;
-        std::mutex presentQueueMutex;
-
-        VkQueue computeQueue;
-        std::mutex computeQueueMutex;
+        Queue* queues;
+        std::uint32_t queueCount;
 
         VkSurfaceKHR surface;
 
         FrameData frames[MAX_IN_FLIGHT_FRAMES];
-        VkCommandBuffer transferCommandBuffers[4];
 
         AllocatedImage drawImage;
         AllocatedImage depthImage;
-        AllocatedImage errorTexture;
 
         DescriptorAllocator gpDescriptorAllocator;
 
@@ -425,4 +433,12 @@ namespace kvk {
                           RendererState& state,
                           std::span<std::uint32_t> indices,
                           std::span<std::uint8_t> vertices);
+
+    ReturnCode createQueue(Queue& queue,
+                           RendererState& state,
+                           VkQueueFlags flags,
+                           std::uint32_t queueFamilyIndex);
+
+    PoolInfo lockCommandPool(RendererState& state, VkQueueFlags desiredQueueFlags = VK_QUEUE_GRAPHICS_BIT);
+    void unlockCommandPool(RendererState& state, PoolInfo& poolInfo);
 }

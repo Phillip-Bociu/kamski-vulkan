@@ -212,7 +212,7 @@ namespace kvk {
 
         VkPipeline basePipeline;
         
-        VkFormat colorAttachmentFormat;
+        std::vector<VkFormat> colorAttachmentFormats;
 
         VkPipelineLayoutCreateInfo layoutCreateInfo;
         VkPipelineViewportStateCreateInfo viewportState;
@@ -230,7 +230,7 @@ namespace kvk {
         PipelineBuilder& setInputTopology(VkPrimitiveTopology topology);
         PipelineBuilder& setPolygonMode(VkPolygonMode poly);
         PipelineBuilder& setCullMode(VkCullModeFlags cullMode, VkFrontFace face);
-        PipelineBuilder& setColorAttachmentFormat(VkFormat format);
+        PipelineBuilder& addColorAttachmentFormat(VkFormat format, std::uint32_t count = 1);
         PipelineBuilder& setDepthAttachmentFormat(VkFormat format);
         PipelineBuilder& setStencilAttachmentFormat(VkFormat format);
         PipelineBuilder& setPrebuiltLayout(VkPipelineLayout layout = VK_NULL_HANDLE);
@@ -294,6 +294,7 @@ namespace kvk {
 
     struct Queue {
         VkQueue handle;
+        VkQueue secondaryHandle;
         std::mutex submitMutex;
         std::mutex poolMutex;
         std::condition_variable poolCvar;
@@ -328,7 +329,7 @@ namespace kvk {
     };
 
 
-    static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 3;
+    static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 1;
     struct RendererState {
         std::uint32_t currentFrame;
 
@@ -437,7 +438,8 @@ namespace kvk {
     ReturnCode createQueue(Queue& queue,
                            RendererState& state,
                            VkQueueFlags flags,
-                           std::uint32_t queueFamilyIndex);
+                           std::uint32_t queueFamilyIndex,
+                           bool hasSecondaryQueue = false);
 
     PoolInfo lockCommandPool(RendererState& state, VkQueueFlags desiredQueueFlags = VK_QUEUE_GRAPHICS_BIT);
     void unlockCommandPool(RendererState& state, PoolInfo& poolInfo);

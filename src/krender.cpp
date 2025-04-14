@@ -318,9 +318,12 @@ namespace kvk {
                         }
                     }
 
-                    if(!computeFamilyFound && qf.queueFlags & VK_QUEUE_COMPUTE_BIT) {
-                        state.computeFamilyIndex = i;
-                        computeFamilyFound = true;
+                    if(qf.queueFlags & VK_QUEUE_COMPUTE_BIT) {
+                        logInfo("Qfam[%u] supports COMPUTE", i);
+                        if(!computeFamilyFound) {
+                            state.computeFamilyIndex = i;
+                            computeFamilyFound = true;
+                        }
                     }
 
                     i++;
@@ -378,16 +381,17 @@ namespace kvk {
         std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
         queueCreateInfos.reserve(uniqueQueueFamilies.size());
 
-        float queuePriority[1] = {
-            1.0f,
-        };
-
         for(std::uint32_t qFam : uniqueQueueFamilies) {
+            float queuePriorities[2] = {
+                1.0f,
+                0.0f
+            };
+            
             VkDeviceQueueCreateInfo queueCreateInfo = {
                 .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
                 .queueFamilyIndex = qFam,
-                .queueCount = 1,
-                .pQueuePriorities = queuePriority,
+                .queueCount = qFam == 0 ? 2u : 1u,
+                .pQueuePriorities = queuePriorities,
             };
             queueCreateInfos.push_back(queueCreateInfo);
         }
@@ -457,7 +461,8 @@ namespace kvk {
             if(createQueue(state.queues[i],
                            state,
                            queueFamilies[qFam].queueFlags,
-                           qFam) != ReturnCode::OK) {
+                           qFam,
+                           qFam == 0) != ReturnCode::OK) {
                 return ReturnCode::UNKNOWN;
             }
             i++;
@@ -828,8 +833,6 @@ namespace kvk {
 
         renderInfo = {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-            .colorAttachmentCount = 1,
-            .pColorAttachmentFormats = &colorAttachmentFormat,
         };
         inputState = {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
@@ -959,8 +962,12 @@ namespace kvk {
         return *this;
     }
 
-    PipelineBuilder& PipelineBuilder::setColorAttachmentFormat(VkFormat format) {
-        colorAttachmentFormat = format;
+    PipelineBuilder& PipelineBuilder::addColorAttachmentFormat(VkFormat format, std::uint32_t count) {
+        std::uint64_t oldSize = colorAttachmentFormats.size();
+        colorAttachmentFormats.resize(oldSize + count);
+        for(std::uint32_t i = 0; i != count; i++) {
+            colorAttachmentFormats[i + oldSize] = format;
+        }
         return *this;
     }
 
@@ -1013,6 +1020,13 @@ namespace kvk {
             .dynamicStateCount = static_cast<std::uint32_t>(dynamicState.size()),
             .pDynamicStates = dynamicState.data(),
         };
+
+        renderInfo.colorAttachmentCount = colorAttachmentFormats.size();
+        renderInfo.pColorAttachmentFormats = colorAttachmentFormats.data();
+
+        std::vector<VkPipelineColorBlendAttachmentState> attachments(colorAttachmentFormats.size(), colorBlendAttachment);
+        blendState.attachmentCount = attachments.size();
+        blendState.pAttachments = attachments.data();
 
         VkGraphicsPipelineCreateInfo createInfo = {
             .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
@@ -1919,9 +1933,14 @@ namespace kvk {
     ReturnCode createQueue(Queue& queue,
                            RendererState& state,
                            const VkQueueFlags flags,
-                           const std::uint32_t queueFamilyIndex) {
+                           const std::uint32_t queueFamilyIndex,
+                           bool hasSecondaryQueue) {
         KVK_PROFILE();
         vkGetDeviceQueue(state.device, queueFamilyIndex, 0, &queue.handle);
+        if(hasSecondaryQueue) {
+            vkGetDeviceQueue(state.device, queueFamilyIndex, 1, &queue.secondaryHandle);
+        }
+
         queue.familyIndex = queueFamilyIndex;
 
         VkCommandPoolCreateInfo commandPoolCreateInfo = {

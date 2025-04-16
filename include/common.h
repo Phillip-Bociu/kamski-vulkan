@@ -7,6 +7,7 @@
 #include <tracy/Tracy.hpp>
 #include <tracy/TracyVulkan.hpp>
 #define KVK_PROFILE() ZoneScoped
+#define KVK_PROFILE_NAMED(name) ZoneScopedN(name)
 #define KVK_SET_THREAD_NAME(name) tracy::SetThreadName(name)
 #define KVK_FRAME_MARK() FrameMark
 #define KVK_GPU_ZONE(name) TracyGpuZone(name)
@@ -16,6 +17,7 @@
 #define KVK_GPU_ZONE(name)
 #define KVK_FRAME_MARK()
 #define KVK_PROFILE()
+#define KVK_PROFILE_NAMED(name)
 #define KVK_SET_THREAD_NAME(name)
 
 #endif

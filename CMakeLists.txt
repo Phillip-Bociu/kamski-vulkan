@@ -11,24 +11,6 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS true)
 set(CMAKE_TRY_COMPILE_TARGET_TYPE "STATIC_LIBRARY")
 
-IF(KVK_DEBUG MATCHES ON)
-    message("DEBUG BUILD")
-    #set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
-    add_compile_definitions(KVK_DEBUG)
-    #add_compile_options(/Zi)
-    set(CMAKE_BUILD_TYPE Debug)
-ELSE(KVK_DEBUG MATCHES ON)
-    message("RELEASE BUILD")
-    #set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
-    set(CMAKE_BUILD_TYPE Release)
-    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
-    IF(KAMSKI_LLVM MATCHES ON)
-        add_compile_options(-Ofast)
-        #    ELSE()
-        #add_compile_options(/O2 /fp:fast)
-    ENDIF()
-ENDIF(KVK_DEBUG MATCHES ON)
-
 ###########################################################################################
 # Dependencies
 ###########################################################################################
@@ -80,18 +62,18 @@ endif()
 
 target_include_directories(kamskiVk PUBLIC ./include/ $ENV{VULKAN_SDK}/Include/)
 
-target_precompile_headers(kamskiVk PUBLIC
- "$<$<COMPILE_LANGUAGE:CXX>:deque>"
- "$<$<COMPILE_LANGUAGE:CXX>:thread>"
- "$<$<COMPILE_LANGUAGE:CXX>:mutex>"
- "$<$<COMPILE_LANGUAGE:CXX>:atomic>"
- "$<$<COMPILE_LANGUAGE:CXX>:algorithm>"
- "$<$<COMPILE_LANGUAGE:CXX>:vector>"
- "$<$<COMPILE_LANGUAGE:CXX>:span>"
- "$<$<COMPILE_LANGUAGE:CXX>:set>"
- "$<$<COMPILE_LANGUAGE:CXX>:numeric>"
- "$<$<COMPILE_LANGUAGE:CXX>:fstream>"
-)
+#target_precompile_headers(kamskiVk PUBLIC
+# "$<$<COMPILE_LANGUAGE:CXX>:deque>"
+# "$<$<COMPILE_LANGUAGE:CXX>:thread>"
+# "$<$<COMPILE_LANGUAGE:CXX>:mutex>"
+# "$<$<COMPILE_LANGUAGE:CXX>:atomic>"
+# "$<$<COMPILE_LANGUAGE:CXX>:algorithm>"
+# "$<$<COMPILE_LANGUAGE:CXX>:vector>"
+# "$<$<COMPILE_LANGUAGE:CXX>:span>"
+# "$<$<COMPILE_LANGUAGE:CXX>:set>"
+# "$<$<COMPILE_LANGUAGE:CXX>:numeric>"
+# "$<$<COMPILE_LANGUAGE:CXX>:fstream>"
+#)
 
 ###########################################################################################
 # Shader Compilation

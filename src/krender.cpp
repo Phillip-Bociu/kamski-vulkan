@@ -407,6 +407,9 @@ namespace kvk {
         VkPhysicalDeviceFeatures2 allDeviceFeatures = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
             .pNext = &features12,
+            .features = {
+                .samplerAnisotropy = VK_TRUE
+            },
         };
 
         vkGetPhysicalDeviceFeatures2(state.physicalDevice,
@@ -420,6 +423,7 @@ namespace kvk {
         CHECK_FEATURE(features13, synchronization2);
         CHECK_FEATURE(features13, dynamicRendering);
         CHECK_FEATURE(features12, bufferDeviceAddress);
+        CHECK_FEATURE(allDeviceFeatures.features, samplerAnisotropy);
 #undef CHECK_FEATURE
 
         features13 = VkPhysicalDeviceVulkan13Features {
@@ -437,6 +441,9 @@ namespace kvk {
         allDeviceFeatures = VkPhysicalDeviceFeatures2 {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
             .pNext = &features12,
+            .features = {
+                .samplerAnisotropy = VK_TRUE,
+            },
         };
 
         VkDeviceCreateInfo deviceCreateInfo = {

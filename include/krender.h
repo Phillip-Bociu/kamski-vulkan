@@ -169,7 +169,7 @@ namespace kvk {
                                               VkImageLayout imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
         RenderPassBuilder& setDepthAttachment(VkImageView view,
-                                              bool combinedDepthStencil = true,
+                                              bool combinedDepthStencil = false,
                                               VkAttachmentLoadOp loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
                                               float depthClear = 1.0f,
                                               std::uint32_t stencil = 0,

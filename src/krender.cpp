@@ -124,6 +124,7 @@ namespace kvk {
                 Validation layer handling
           =====================================*/
 #ifdef KVK_DEBUG
+        logInfo("Adding validation layers");
         const char* desiredLayers[] = {
             "VK_LAYER_KHRONOS_validation",
             "VK_LAYER_KHRONOS_synchronization2",
@@ -149,6 +150,8 @@ namespace kvk {
                 return ReturnCode::LAYER_NOT_FOUND;
             }
         }
+#else 
+        printf("No validation layers\n");
 #endif
         /*=====================================
                     Instance creation
@@ -591,7 +594,7 @@ namespace kvk {
             transitionImage(cmd,
                             state.depthImage.image,
                             VK_IMAGE_LAYOUT_UNDEFINED,
-                            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                            VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
                             VK_PIPELINE_STAGE_2_NONE,
                             0,
                             VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT);
@@ -698,7 +701,7 @@ namespace kvk {
 
         rc = createImage(state.depthImage,
                          state,
-                         VK_FORMAT_D24_UNORM_S8_UINT,
+                         VK_FORMAT_D32_SFLOAT,
                          drawImageExtent,
                          VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
 
@@ -792,7 +795,7 @@ namespace kvk {
                                      transitionImage(cmd,
                                                      state.depthImage.image,
                                                      VK_IMAGE_LAYOUT_UNDEFINED,
-                                                     VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+                                                     VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
                                  }));
         return rc;
     }
@@ -980,7 +983,6 @@ namespace kvk {
 
     PipelineBuilder& PipelineBuilder::setDepthAttachmentFormat(VkFormat format) {
         renderInfo.depthAttachmentFormat = format;
-        renderInfo.stencilAttachmentFormat = format;
         return *this;
     }
 
@@ -1878,7 +1880,10 @@ namespace kvk {
                 },
             },
         };
-        this->combinedDepthStencil = combinedDepthStencil;
+        if(combinedDepthStencil) {
+            this->combinedDepthStencil = true;
+            this->hasStencil = true;
+        }
         this->hasDepth = true;
         return *this;
     }

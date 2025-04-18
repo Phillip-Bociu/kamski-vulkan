@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <span>
 #include <functional>
+#include <mutex>
 
 #include "common.h"
 

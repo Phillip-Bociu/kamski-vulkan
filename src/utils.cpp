@@ -88,27 +88,31 @@ namespace kvk {
 	}
 
 
-	VkImageSubresourceRange imageSubresourceRange(VkImageAspectFlags aspectMask) {
+	VkImageSubresourceRange imageSubresourceRange(VkImageAspectFlags aspectMask,
+                                                  std::uint32_t baseMipLevel,
+                                                  std::uint32_t levelCount) {
 		VkImageSubresourceRange retval = {
 			.aspectMask = aspectMask,
-			.baseMipLevel = 0,
-			.levelCount = VK_REMAINING_MIP_LEVELS,
+			.baseMipLevel = baseMipLevel,
+			.levelCount = levelCount,
 			.baseArrayLayer = 0,
 			.layerCount = VK_REMAINING_ARRAY_LAYERS,
 		};
 		return retval;
 	}
 
-	void transitionImage(VkCommandBuffer cmd,
-						 VkImage image,
-						 VkImageLayout currentLayout,
-                         VkImageLayout newLayout,
-                         VkPipelineStageFlags2 srcStageMask,
-                         VkAccessFlags2 srcAccessMask,
-                         VkPipelineStageFlags2 dstStageMask,
-                         VkAccessFlags2 dstAccessMask) {
+	void transitionImageMip(VkCommandBuffer cmd,
+                            VkImage image,
+                            std::uint32_t baseMipLevel,
+                            std::uint32_t levelCount,
+                            VkImageLayout currentLayout,
+                            VkImageLayout newLayout,
+                            VkPipelineStageFlags2 srcStageMask,
+                            VkAccessFlags2 srcAccessMask,
+                            VkPipelineStageFlags2 dstStageMask,
+                            VkAccessFlags2 dstAccessMask) {
         KVK_PROFILE();
-		VkImageMemoryBarrier2 imageBarrier = {
+        VkImageMemoryBarrier2 imageBarrier = {
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
             .srcStageMask = srcStageMask,
             .srcAccessMask = srcAccessMask,
@@ -119,44 +123,57 @@ namespace kvk {
         };
 
 
-		VkImageAspectFlags aspectMask;
-		if(newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL) {
-		    aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-		} else if(newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
-		    aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
-		} else {
-		    aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		}
+        VkImageAspectFlags aspectMask;
+        if(newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL) {
+            aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        } else if(newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+            aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+        } else {
+            aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        }
 
-		imageBarrier.subresourceRange = imageSubresourceRange(aspectMask);
-		imageBarrier.image = image;
+        imageBarrier.subresourceRange = imageSubresourceRange(aspectMask, baseMipLevel, levelCount);
+        imageBarrier.image = image;
 
-		VkDependencyInfo depInfo {};
-		depInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-		depInfo.pNext = nullptr;
+        VkDependencyInfo depInfo {};
+        depInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+        depInfo.pNext = nullptr;
 
-		depInfo.imageMemoryBarrierCount = 1;
-		depInfo.pImageMemoryBarriers = &imageBarrier;
+        depInfo.imageMemoryBarrierCount = 1;
+        depInfo.pImageMemoryBarriers = &imageBarrier;
 
-		vkCmdPipelineBarrier2(cmd, &depInfo);
-	}
+        vkCmdPipelineBarrier2(cmd, &depInfo);
+    }
+
+    void transitionImage(VkCommandBuffer cmd,
+                         VkImage image,
+                         VkImageLayout currentLayout,
+                         VkImageLayout newLayout,
+                         VkPipelineStageFlags2 srcStageMask,
+                         VkAccessFlags2 srcAccessMask,
+                         VkPipelineStageFlags2 dstStageMask,
+                         VkAccessFlags2 dstAccessMask) {
+        transitionImageMip(cmd,
+                           image,
+                           0,
+                           VK_REMAINING_MIP_LEVELS,
+                           currentLayout,
+                           newLayout,
+                           srcStageMask,
+                           srcAccessMask,
+                           dstStageMask,
+                           dstAccessMask);
+    }
+
 
 	VkImageCreateInfo imageCreateInfo(VkPhysicalDevice physicalDevice,
 									  VkFormat format,
 									  VkImageUsageFlags usageFlags,
 									  VkExtent3D extent,
-                                      std::uint32_t arrayLayerCount) {
+                                      std::uint32_t arrayLayerCount,
+                                      std::uint32_t mipLevels) {
         KVK_PROFILE();
         const VkImageType imageType = (extent.depth == 1 ? VK_IMAGE_TYPE_2D : VK_IMAGE_TYPE_3D);
-
-		VkPhysicalDeviceImageFormatInfo2 imageFormatInfo = {
-			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2,
-			.format = format,
-			.type = imageType,
-			.tiling = VK_IMAGE_TILING_OPTIMAL,
-			.usage = usageFlags,
-		};
-
 		return {
 			.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
 			.pNext = nullptr,
@@ -164,7 +181,7 @@ namespace kvk {
 			.imageType = imageType,
 			.format = format,
 			.extent = extent,
-			.mipLevels = 1,
+			.mipLevels = mipLevels,
 			.arrayLayers = arrayLayerCount,
 			.samples = VK_SAMPLE_COUNT_1_BIT,
 			.tiling = VK_IMAGE_TILING_OPTIMAL,
@@ -176,7 +193,8 @@ namespace kvk {
 											  VkImage image,
 											  VkImageAspectFlags aspectFlags,
                                               bool isCubemap,
-                                              std::uint32_t baseArrayLayer) {
+                                              std::uint32_t baseArrayLayer,
+                                              std::uint32_t mipLevelCount) {
 		return {
 			.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
 			.pNext = nullptr,
@@ -186,7 +204,7 @@ namespace kvk {
 			.subresourceRange = {
 				.aspectMask = aspectFlags,
 				.baseMipLevel = 0,
-				.levelCount = 1,
+				.levelCount = mipLevelCount,
 				.baseArrayLayer = baseArrayLayer,
 				.layerCount = (isCubemap ? 6u : 1u),
 			},
@@ -198,22 +216,23 @@ namespace kvk {
 						  VkImage dst,
 						  VkExtent2D srcExtent,
 						  VkExtent2D dstExtent,
-                          bool srcIsDepth,
-                          bool dstIsDepth) {
+                          VkImageAspectFlags aspect,
+                          std::uint32_t srcMipLevel,
+                          std::uint32_t dstMipLevel) {
         KVK_PROFILE();
   		VkImageBlit2 blitRegion = {
  			.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2,
 
  			.srcSubresource = {
-				.aspectMask = static_cast<VkImageAspectFlags>(srcIsDepth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT),
-				.mipLevel = 0,
+				.aspectMask = aspect,
+				.mipLevel = srcMipLevel,
 				.baseArrayLayer = 0,
 				.layerCount = 1,
  			},
 
  			.dstSubresource =  {
-				.aspectMask = static_cast<VkImageAspectFlags>(dstIsDepth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT),
-				.mipLevel = 0,
+				.aspectMask = aspect,
+				.mipLevel = dstMipLevel,
 				.baseArrayLayer = 0,
 				.layerCount = 1,
  			},

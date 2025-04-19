@@ -198,7 +198,7 @@ namespace kvk {
 #ifdef KVK_DEBUG
         VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = {
             .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-            .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+            .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
             .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT| VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
             .pfnUserCallback = debugCallback,
             .pUserData = nullptr,
@@ -560,7 +560,6 @@ namespace kvk {
             logError("Could not create swapchain");
             return ReturnCode::UNKNOWN;
         }
-        logInfo("Created swapchain");
 
         VkSemaphoreCreateInfo semaphoreCreateInfo = {
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
@@ -1063,8 +1062,6 @@ namespace kvk {
             logError("Could not create graphics pipeline");
             return ReturnCode::UNKNOWN;
         }
-
-        logDebug("Created pipeline");
         return ReturnCode::OK;
     }
 
@@ -1110,16 +1107,25 @@ namespace kvk {
                            const VkFormat format,
                            const VkExtent3D extent,
                            const VkImageUsageFlags usageFlags,
-                           bool isCubemap) {
+                           bool isCubemap,
+                           std::uint32_t mipLevels) {
         KVK_PROFILE();
+        if(mipLevels > 1) {
+            VkFormatProperties formatProps;
+            vkGetPhysicalDeviceFormatProperties(state.physicalDevice, format, &formatProps);
+            assert(formatProps.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_SRC_BIT);
+            assert(formatProps.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_DST_BIT);
+        }
+
         VkImageCreateInfo imageInfo = imageCreateInfo(state.physicalDevice,
                                                       format,
                                                       usageFlags,
                                                       extent,
-                                                      isCubemap ? 6 : 1);
+                                                      isCubemap ? 6 : 1,
+                                                      mipLevels);
 
         VmaAllocationCreateInfo imageAllocInfo = {
-            .usage = VMA_MEMORY_USAGE_GPU_ONLY,
+            .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
             .requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         };
 
@@ -1148,14 +1154,8 @@ namespace kvk {
             } break;
         }
 
-        VkImageViewCreateInfo imageViewInfo = imageViewCreateInfo(format,
-                                                                  image.image,
-                                                                  aspect,
-                                                                  isCubemap);
-        if(vkCreateImageView(state.device,
-                             &imageViewInfo,
-                             nullptr,
-                             &image.view) != VK_SUCCESS) {
+        VkImageViewCreateInfo imageViewInfo = imageViewCreateInfo(format, image.image, aspect, isCubemap, 0, mipLevels);
+        if(vkCreateImageView(state.device, &imageViewInfo, nullptr, &image.view) != VK_SUCCESS) {
             logError("Could not create draw image");
             return ReturnCode::UNKNOWN;
         }
@@ -1169,9 +1169,10 @@ namespace kvk {
                            const void* data,
                            const VkFormat format,
                            const VkExtent3D extent,
-                           const VkImageUsageFlags usage) {
+                           const VkImageUsageFlags usage,
+                           const std::uint32_t mipLevels) {
         KVK_PROFILE();
-        const VkImageUsageFlags usageFlags = usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        const VkImageUsageFlags usageFlags = usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | (mipLevels > 1 ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0);
         const std::uint64_t size = extent.width * extent.height * extent.depth * 4;
         AllocatedBuffer stagingBuffer;
         ReturnCode rc = createBuffer(stagingBuffer,
@@ -1191,21 +1192,24 @@ namespace kvk {
                          format,
                          extent,
                          usageFlags,
-                         false);
+                         false,
+                         mipLevels);
         if(rc != ReturnCode::OK) {
             logError("Could not create image");
             return rc;
         }
 
         auto transferFunc = [&](VkCommandBuffer cmd) {
-        KVK_PROFILE();
-            transitionImage(cmd,
-                            image.image,
-                            VK_IMAGE_LAYOUT_UNDEFINED,
-                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 
-                            VK_PIPELINE_STAGE_2_NONE,
-                            0,
-                            VK_PIPELINE_STAGE_2_TRANSFER_BIT);
+            KVK_PROFILE();
+            transitionImageMip(cmd,
+                               image.image,
+                               0, 1,
+                               VK_IMAGE_LAYOUT_UNDEFINED,
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 
+                               VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                               0,
+                               VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                               VK_ACCESS_2_MEMORY_WRITE_BIT);
 
             VkBufferImageCopy copyRegion = {
                 .bufferOffset = 0,
@@ -1227,17 +1231,67 @@ namespace kvk {
                                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                    1,
                                    &copyRegion);
-            transitionImage(cmd,
-                            image.image,
-                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                            VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                            VK_ACCESS_2_MEMORY_WRITE_BIT,
-                            VK_PIPELINE_STAGE_2_NONE,
-                            0);
+            if(mipLevels > 1) {
+                std::uint32_t mipWidth = extent.width;
+                std::uint32_t mipHeight = extent.height;
+
+                transitionImageMip(cmd,
+                                   image.image,
+                                   0, 1,
+                                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 
+                                   VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                                   VK_ACCESS_2_MEMORY_WRITE_BIT,
+                                   VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                                   VK_ACCESS_2_MEMORY_READ_BIT);
+                for(int i = 1; i != mipLevels; i++) {
+                    transitionImageMip(cmd,
+                                    image.image,
+                                    i, 1,
+                                    VK_IMAGE_LAYOUT_UNDEFINED,
+                                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                    0,
+                                    0,
+                                    VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                                    VK_ACCESS_2_MEMORY_WRITE_BIT);
+                    blitImageToImage(cmd,
+                                     image.image,
+                                     image.image,
+                                     {mipWidth, mipHeight},
+                                     {mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1},
+                                     VK_IMAGE_ASPECT_COLOR_BIT,
+                                     i - 1,
+                                     i);
+                    mipWidth  = std::max(1u, mipWidth  / 2);
+                    mipHeight = std::max(1u, mipHeight / 2);
+                    transitionImageMip(cmd,
+                                    image.image,
+                                    i, 1,
+                                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                    VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                                    VK_ACCESS_2_MEMORY_WRITE_BIT,
+                                    VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                                    VK_ACCESS_2_MEMORY_READ_BIT);
+                }
+                transitionImageMip(cmd,
+                                   image.image,
+                                   0, mipLevels,
+                                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            } else {
+                transitionImage(cmd,
+                                image.image,
+                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                                VK_ACCESS_2_MEMORY_WRITE_BIT,
+                                VK_PIPELINE_STAGE_2_NONE,
+                                0);
+            }
         };
 
-        PoolInfo poolInfo = lockCommandPool(state, VK_QUEUE_TRANSFER_BIT);
+        PoolInfo poolInfo = lockCommandPool(state, VK_QUEUE_GRAPHICS_BIT);
         defer {
             unlockCommandPool(state, poolInfo);
         };

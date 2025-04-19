@@ -403,21 +403,16 @@ namespace kvk {
                            const VkFormat format,
                            const VkExtent3D extent,
                            const VkImageUsageFlags usageFlags,
-                           bool isCubemap = false);
+                           bool isCubemap = false,
+                           std::uint32_t mipLevels = 1);
 
     ReturnCode createImage(AllocatedImage& image,
                            RendererState& state,
                            const void* data,
                            const VkFormat format,
                            const VkExtent3D extent,
-                           const VkImageUsageFlags usageFlags);
-
-    ReturnCode createCubemap(AllocatedImage& image,
-                             RendererState& state,
-                             const CubemapContents& data,
-                             const VkFormat format,
-                             const VkExtent2D extent,
-                             const VkImageUsageFlags usageFlags);
+                           const VkImageUsageFlags usageFlags,
+                           std::uint32_t mipLevels = 1);
 
     ReturnCode createCubemap(AllocatedImage& image,
                              RendererState& state,

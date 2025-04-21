@@ -224,8 +224,6 @@ namespace kvk {
         VkPipeline basePipeline;
         VkPipelineCache cache;
         bool allowDerivatives;
-        
-        std::vector<VkFormat> colorAttachmentFormats;
 
         VkPipelineLayoutCreateInfo layoutCreateInfo;
         VkPipelineViewportStateCreateInfo viewportState;

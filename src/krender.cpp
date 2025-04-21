@@ -867,6 +867,24 @@ namespace kvk {
             .pAttachments = &colorBlendAttachment
         };
         basePipeline = VK_NULL_HANDLE;
+        cache = VK_NULL_HANDLE;
+        allowDerivatives = false;
+    }
+
+    PipelineBuilder& PipelineBuilder::addSpecializationConstantData(const void* data, const std::uint64_t size, const ShaderStage shaderStage) {
+        addSpecializationConstantData(data, size, specializationConstants[shaderStage].size(), shaderStage);
+    }
+
+    PipelineBuilder& PipelineBuilder::addSpecializationConstantData(const void* data, const std::uint64_t size, const std::uint32_t constantId, const ShaderStage shaderStage) {
+        VkSpecializationMapEntry entry;
+        entry.size = size;
+        entry.offset = specializationConstantData[shaderStage].size();
+        entry.constantID = constantId;
+
+        specializationConstantData[shaderStage].resize(specializationConstantData[shaderStage].size() + size);
+        memcpy(specializationConstantData[shaderStage].data(), data, size);
+
+        specializationConstants[shaderStage].emplace_back(entry);
     }
 
     PipelineBuilder& PipelineBuilder::setPrebuiltLayout(VkPipelineLayout layout) {
@@ -876,6 +894,9 @@ namespace kvk {
             prebuiltLayout.reset();
         }
         return *this;
+    }
+    PipelineBuilder& PipelineBuilder::setAllowDerivatives(bool allow) {
+        allowDerivatives = allow;
     }
 
     PipelineBuilder& PipelineBuilder::enableBlendingAdditive() {
@@ -953,6 +974,10 @@ namespace kvk {
         shaderStages.push_back(fs);
 
         return *this;
+    }
+
+    PipelineBuilder& PipelineBuilder::setPipelineCache(VkPipelineCache cache) {
+        this->cache = cache;
     }
 
     PipelineBuilder& PipelineBuilder::setInputTopology(VkPrimitiveTopology topology) {
@@ -1036,9 +1061,26 @@ namespace kvk {
         blendState.attachmentCount = attachments.size();
         blendState.pAttachments = attachments.data();
 
+        VkSpecializationInfo specializationInfos[SHADER_STAGE_COUNT];
+        for(int i = 0; i != SHADER_STAGE_COUNT; i++) {
+            if(specializationConstants[i].empty()) {
+                continue;
+            }
+
+            specializationInfos[i] = {
+                .mapEntryCount = std::uint32_t(specializationConstants[i].size()),
+                .pMapEntries = specializationConstants[i].data(),
+                .dataSize = specializationConstantData[i].size(),
+                .pData = specializationConstantData[i].data(),
+            };
+    
+            shaderStages[i].pSpecializationInfo = &specializationInfos[i];
+        }
+
         VkGraphicsPipelineCreateInfo createInfo = {
             .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
             .pNext = &renderInfo,
+            .flags = (allowDerivatives ? VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT : 0u) | (basePipeline != VK_NULL_HANDLE ? VK_PIPELINE_CREATE_DERIVATIVE_BIT : 0u),
             .stageCount = static_cast<std::uint32_t>(shaderStages.size()),
             .pStages = shaderStages.data(),
             .pVertexInputState = &inputState,
@@ -1050,11 +1092,12 @@ namespace kvk {
             .pColorBlendState = &blendState,
             .pDynamicState = &dynamicStateInfo,
             .layout = pipeline.layout,
-            .basePipelineHandle = basePipeline
+            .basePipelineHandle = basePipeline,
+            .basePipelineIndex = -1,
         };
 
         if(vkCreateGraphicsPipelines(device,
-                                     VK_NULL_HANDLE,
+                                     cache,
                                      1,
                                      &createInfo,
                                      nullptr,
@@ -1062,6 +1105,46 @@ namespace kvk {
             logError("Could not create graphics pipeline");
             return ReturnCode::UNKNOWN;
         }
+        return ReturnCode::OK;
+    }
+
+    ReturnCode PipelineBuilder::buildCompute(Pipeline& pipeline, const VkDevice device) {
+        KVK_PROFILE();
+        if(!prebuiltLayout) {
+            VkPipelineLayoutCreateInfo layoutCreateInfo = {
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+                .setLayoutCount = static_cast<std::uint32_t>(descriptorSetLayouts.size()),
+                .pSetLayouts = descriptorSetLayouts.data(),
+                .pushConstantRangeCount = static_cast<std::uint32_t>(pushConstantRanges.size()),
+                .pPushConstantRanges = pushConstantRanges.data(),
+            };
+
+            if(vkCreatePipelineLayout(device,
+                                      &layoutCreateInfo,
+                                      nullptr,
+                                      &pipeline.layout) != VK_SUCCESS) {
+                logError("Could not create pipeline layout");
+                return ReturnCode::UNKNOWN;
+            }
+        } else {
+            pipeline.layout = prebuiltLayout.value();
+        }
+
+        assert(shaderStages.size() == 1);
+        VkComputePipelineCreateInfo createInfo = {
+            .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+            .flags = (allowDerivatives ? VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT : 0u) | (basePipeline != VK_NULL_HANDLE ? VK_PIPELINE_CREATE_DERIVATIVE_BIT : 0u),
+            .stage = shaderStages[0],
+            .layout = pipeline.layout,
+            .basePipelineHandle = basePipeline,
+            .basePipelineIndex = -1
+        };
+
+        if(vkCreateComputePipelines(device, cache, 1, &createInfo, nullptr, &pipeline.pipeline) != VK_SUCCESS) {
+            logError("Could not create compute pipeline");
+            return ReturnCode::UNKNOWN;
+        }
+
         return ReturnCode::OK;
     }
 

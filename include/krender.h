@@ -210,7 +210,20 @@ namespace kvk {
         std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
         std::optional<VkPipelineLayout> prebuiltLayout;
 
+        enum ShaderStage {
+            SHADER_STAGE_VERTEX,
+            SHADER_STAGE_FRAGMENT,
+
+            SHADER_STAGE_COUNT
+        };
+
+        std::vector<VkSpecializationMapEntry> specializationConstants[SHADER_STAGE_COUNT];
+        std::vector<std::uint8_t> specializationConstantData[SHADER_STAGE_COUNT];
+
+        std::vector<VkFormat> colorAttachmentFormats;
         VkPipeline basePipeline;
+        VkPipelineCache cache;
+        bool allowDerivatives;
         
         std::vector<VkFormat> colorAttachmentFormats;
 
@@ -235,6 +248,8 @@ namespace kvk {
         PipelineBuilder& setStencilAttachmentFormat(VkFormat format);
         PipelineBuilder& setPrebuiltLayout(VkPipelineLayout layout = VK_NULL_HANDLE);
         PipelineBuilder& setBasePipeline(VkPipeline pipeline);
+        PipelineBuilder& setAllowDerivatives(bool allow);
+        PipelineBuilder& setPipelineCache(VkPipelineCache cache);
 
         PipelineBuilder& enableDepthTest(bool depthWriteEnable, VkCompareOp op);
         PipelineBuilder& enableStencilTest(VkCompareOp compareOp, bool enableWriting);
@@ -246,8 +261,22 @@ namespace kvk {
                                               std::uint32_t offset = 0);
         PipelineBuilder& addDescriptorSetLayout(VkDescriptorSetLayout layout);
 
+        PipelineBuilder& addSpecializationConstantData(const void* data, const std::uint64_t size, std::uint32_t constantId, const ShaderStage shaderStage);
+        template<typename T>
+        PipelineBuilder& addSpecializationConstant(const T& constant, const std::uint32_t constantId, const ShaderStage shaderStage) {
+            addSpecializationConstantData(&constant, sizeof(T), constantId, shaderStage);
+        }
+
+        PipelineBuilder& addSpecializationConstantData(const void* data, const std::uint64_t size, const ShaderStage shaderStage);
+        template<typename T>
+        PipelineBuilder& addSpecializationConstant(const T& constant, const ShaderStage shaderStage) {
+            addSpecializationConstantData(&constant, sizeof(T), shaderStage);
+        }
+
         ReturnCode build(Pipeline& pipeline,
                          const VkDevice device);
+        ReturnCode buildCompute(Pipeline& pipeline,
+                                const VkDevice device);
     };
 
     struct Mesh {

@@ -1,6 +1,7 @@
 #include "common.h"
 #include "utils.h"
 #include "vulkan/vulkan_core.h"
+#include <mutex>
 
 namespace kvk {
 	VkDescriptorSetLayoutBinding descriptorSetLayoutBinding(std::uint32_t binding,
@@ -16,7 +17,7 @@ namespace kvk {
 										 VkDevice device,
 										 VkShaderStageFlags shaderFlags,
 										 std::span<VkDescriptorSetLayoutBinding> bindings,
-										 VkDescriptorSetLayoutCreateFlags flags) {
+                                         const VkDescriptorSetLayoutBindingFlagsCreateInfo* flags) {
         KVK_PROFILE();
 		for(auto& binding : bindings) {
 			binding.stageFlags |= shaderFlags;
@@ -24,7 +25,7 @@ namespace kvk {
 
 		VkDescriptorSetLayoutCreateInfo createInfo = {
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-			.flags = flags,
+			.pNext = flags,
 			.bindingCount = std::uint32_t(bindings.size()),
 			.pBindings = bindings.data(),
 		};
@@ -306,17 +307,17 @@ namespace kvk {
 			.pCommandBuffers = &cmd,
 		};
 
-        queueMutex.lock();
-		retval = vkQueueSubmit(queue,
-							   1,
-							   &submitInfo,
-							   fence);
-		if(retval != VK_SUCCESS) {
-			logError("Queue submit failed");
-            queueMutex.unlock();
-			return retval;
+        {
+            std::lock_guard lck(queueMutex);
+            retval = vkQueueSubmit(queue,
+                                   1,
+                                   &submitInfo,
+                                   fence);
+            if(retval != VK_SUCCESS) {
+                logError("Queue submit failed");
+                return retval;
+            }
         }
-        queueMutex.unlock();
 
 		vkWaitForFences(device,
 						1,

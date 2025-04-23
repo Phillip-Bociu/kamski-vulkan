@@ -23,6 +23,7 @@
 
 #include <GLFW/glfw3.h>
 
+static bool lmao = false;
 namespace kvk {
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -399,8 +400,13 @@ namespace kvk {
             queueCreateInfos.push_back(queueCreateInfo);
         }
 
+
+        VkPhysicalDeviceVulkan11Features features11 = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+        };
         VkPhysicalDeviceVulkan13Features features13 = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+            .pNext = &features11,
         };
         VkPhysicalDeviceVulkan12Features features12 = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
@@ -410,9 +416,6 @@ namespace kvk {
         VkPhysicalDeviceFeatures2 allDeviceFeatures = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
             .pNext = &features12,
-            .features = {
-                .samplerAnisotropy = VK_TRUE
-            },
         };
 
         vkGetPhysicalDeviceFeatures2(state.physicalDevice,
@@ -423,14 +426,28 @@ namespace kvk {
             logInfo(#feature " is not available");\
             return ReturnCode::UNKNOWN; \
         }
+
         CHECK_FEATURE(features13, synchronization2);
         CHECK_FEATURE(features13, dynamicRendering);
         CHECK_FEATURE(features12, bufferDeviceAddress);
+        CHECK_FEATURE(features12, runtimeDescriptorArray);
+        CHECK_FEATURE(features12, descriptorBindingPartiallyBound);
+        CHECK_FEATURE(features12, descriptorBindingVariableDescriptorCount);
+        CHECK_FEATURE(features12, shaderSampledImageArrayNonUniformIndexing);
+        CHECK_FEATURE(features11, shaderDrawParameters);
         CHECK_FEATURE(allDeviceFeatures.features, samplerAnisotropy);
+        CHECK_FEATURE(allDeviceFeatures.features, multiDrawIndirect);
+
 #undef CHECK_FEATURE
+
+        features11 = VkPhysicalDeviceVulkan11Features {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+            .shaderDrawParameters = VK_TRUE
+        };
 
         features13 = VkPhysicalDeviceVulkan13Features {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+            .pNext = &features11,
             .synchronization2 = VK_TRUE,
             .dynamicRendering = VK_TRUE
         };
@@ -438,6 +455,10 @@ namespace kvk {
         features12 = VkPhysicalDeviceVulkan12Features {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
             .pNext = &features13,
+            .shaderSampledImageArrayNonUniformIndexing = VK_TRUE,
+            .descriptorBindingPartiallyBound = VK_TRUE,
+            .descriptorBindingVariableDescriptorCount = VK_TRUE,
+            .runtimeDescriptorArray = VK_TRUE,
             .bufferDeviceAddress = VK_TRUE,
         };
 
@@ -445,6 +466,7 @@ namespace kvk {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
             .pNext = &features12,
             .features = {
+                .multiDrawIndirect = VK_TRUE,
                 .samplerAnisotropy = VK_TRUE,
             },
         };
@@ -539,7 +561,6 @@ namespace kvk {
         }
 
         DescriptorAllocator::PoolSizeRatio ratios[] = {
-            DescriptorAllocator::PoolSizeRatio{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3 },
             DescriptorAllocator::PoolSizeRatio{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 },
             DescriptorAllocator::PoolSizeRatio{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
             DescriptorAllocator::PoolSizeRatio{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 },
@@ -599,6 +620,7 @@ namespace kvk {
                             VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT);
         }));
 
+        lmao = true;
         return ReturnCode::OK;
     }
 
@@ -873,6 +895,7 @@ namespace kvk {
 
     PipelineBuilder& PipelineBuilder::addSpecializationConstantData(const void* data, const std::uint64_t size, const ShaderStage shaderStage) {
         addSpecializationConstantData(data, size, specializationConstants[shaderStage].size(), shaderStage);
+        return *this;
     }
 
     PipelineBuilder& PipelineBuilder::addSpecializationConstantData(const void* data, const std::uint64_t size, const std::uint32_t constantId, const ShaderStage shaderStage) {
@@ -885,6 +908,7 @@ namespace kvk {
         memcpy(specializationConstantData[shaderStage].data(), data, size);
 
         specializationConstants[shaderStage].emplace_back(entry);
+        return *this;
     }
 
     PipelineBuilder& PipelineBuilder::setPrebuiltLayout(VkPipelineLayout layout) {
@@ -897,6 +921,7 @@ namespace kvk {
     }
     PipelineBuilder& PipelineBuilder::setAllowDerivatives(bool allow) {
         allowDerivatives = allow;
+        return *this;
     }
 
     PipelineBuilder& PipelineBuilder::enableBlendingAdditive() {
@@ -978,6 +1003,7 @@ namespace kvk {
 
     PipelineBuilder& PipelineBuilder::setPipelineCache(VkPipelineCache cache) {
         this->cache = cache;
+        return *this;
     }
 
     PipelineBuilder& PipelineBuilder::setInputTopology(VkPrimitiveTopology topology) {
@@ -1149,6 +1175,7 @@ namespace kvk {
     }
 
     ReturnCode createBuffer(AllocatedBuffer& buffer,
+                            VkDevice device,
                             VmaAllocator allocator,
                             std::uint64_t size,
                             VkBufferUsageFlags bufferUsage,
@@ -1174,6 +1201,16 @@ namespace kvk {
             logError("Could not allocate buffer");
             return ReturnCode::UNKNOWN;
         }
+        if(bufferUsage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
+            VkBufferDeviceAddressInfo deviceAddressInfo = {
+                .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                .buffer = buffer.buffer
+            };
+            buffer.address = vkGetBufferDeviceAddress(device, &deviceAddressInfo);
+        } else {
+            buffer.address = 0;
+        }
+
         return ReturnCode::OK;
     }
 
@@ -1259,6 +1296,7 @@ namespace kvk {
         const std::uint64_t size = extent.width * extent.height * extent.depth * 4;
         AllocatedBuffer stagingBuffer;
         ReturnCode rc = createBuffer(stagingBuffer,
+                                     state.device,
                                      state.allocator,
                                      size,
                                      VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -1407,6 +1445,7 @@ namespace kvk {
 
         AllocatedBuffer stagingBuffer;
         ReturnCode rc = createBuffer(stagingBuffer,
+                                     state.device,
                                      state.allocator,
                                      size,
                                      VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -1635,17 +1674,43 @@ namespace kvk {
     DescriptorWriter::DescriptorWriter() {
         bindingCount = 0;
     }
+
+    void DescriptorWriter::writeBuffers(std::span<VkDescriptorBufferInfo> bufferInfos,
+                                        VkDescriptorType type,
+                                        std::uint32_t dstArrayElement) {
+        writeBuffers(bindingCount, bufferInfos, type, dstArrayElement);
+    }
+
+    void DescriptorWriter::writeBuffers(int binding,
+                                        std::span<VkDescriptorBufferInfo> bufferInfos,
+                                       VkDescriptorType type,
+                                       std::uint32_t dstArrayElement) {
+        KVK_PROFILE();
+
+        VkWriteDescriptorSet write = {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstBinding = std::uint32_t(binding),
+            .dstArrayElement = dstArrayElement,
+            .descriptorCount = std::uint32_t(bufferInfos.size()),
+            .descriptorType = type,
+            .pBufferInfo = bufferInfos.data(),
+        };
+        writes.push_back(write);
+        bindingCount++;
+    }
     void DescriptorWriter::writeBuffer(VkBuffer buffer,
-                                        const std::uint64_t size,
-                                        const std::uint64_t offset,
-                                        VkDescriptorType type) {
-        writeBuffer(bindingCount, buffer, size, offset, type);
+                                       const std::uint64_t size,
+                                       const std::uint64_t offset,
+                                       VkDescriptorType type,
+                                       std::uint32_t dstArrayElement) {
+        writeBuffer(bindingCount, buffer, size, offset, type, dstArrayElement);
     }
     void DescriptorWriter::writeBuffer(int binding,
                                        VkBuffer buffer,
                                        const std::uint64_t size,
                                        const std::uint64_t offset,
-                                       VkDescriptorType type) {
+                                       VkDescriptorType type,
+                                       std::uint32_t dstArrayElement) {
         KVK_PROFILE();
         auto& info = bufferInfos.emplace_back(VkDescriptorBufferInfo{
             .buffer = buffer,
@@ -1655,8 +1720,8 @@ namespace kvk {
 
         VkWriteDescriptorSet write = {
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = VK_NULL_HANDLE,
             .dstBinding = std::uint32_t(binding),
+            .dstArrayElement = dstArrayElement,
             .descriptorCount = 1,
             .descriptorType = type,
             .pBufferInfo = &info,
@@ -1665,18 +1730,33 @@ namespace kvk {
         bindingCount++;
     }
 
-    void DescriptorWriter::writeImage(VkImageView view,
-                                      VkSampler sampler,
-                                      VkImageLayout layout,
-                                      VkDescriptorType type) {
-        writeImage(bindingCount, view, sampler, layout, type);
+    void DescriptorWriter::writeImages(std::span<VkDescriptorImageInfo> imageInfos,
+                                       VkDescriptorType type, std::uint32_t dstArrayElement) {
+        writeImages(bindingCount, imageInfos, type, dstArrayElement);
+    }
+
+    void DescriptorWriter::writeImages(int binding, std::span<VkDescriptorImageInfo> imageInfos,
+                                       VkDescriptorType type, std::uint32_t dstArrayElement) {
+        KVK_PROFILE();
+
+        VkWriteDescriptorSet write = {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstBinding = std::uint32_t(binding),
+            .dstArrayElement = dstArrayElement,
+            .descriptorCount = std::uint32_t(imageInfos.size()),
+            .descriptorType = type,
+            .pImageInfo = imageInfos.data(),
+        };
+        writes.push_back(write);
+        bindingCount++;
     }
 
     void DescriptorWriter::writeImage(int binding,
-                                        VkImageView view,
-                                        VkSampler sampler,
-                                        VkImageLayout layout,
-                                        VkDescriptorType type) {
+                                      VkImageView view,
+                                      VkSampler sampler,
+                                      VkImageLayout layout,
+                                      VkDescriptorType type,
+                                      std::uint32_t dstArrayElement) {
         KVK_PROFILE();
         auto& info = imageInfos.emplace_back(VkDescriptorImageInfo{
             .sampler = sampler,
@@ -1686,14 +1766,22 @@ namespace kvk {
 
         VkWriteDescriptorSet write = {
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = VK_NULL_HANDLE,
             .dstBinding = std::uint32_t(binding),
+            .dstArrayElement = dstArrayElement,
             .descriptorCount = 1,
             .descriptorType = type,
             .pImageInfo = &info,
         };
         writes.push_back(write);
         bindingCount++;
+    }
+
+    void DescriptorWriter::writeImage(VkImageView view,
+                                      VkSampler sampler,
+                                      VkImageLayout layout,
+                                      VkDescriptorType type,
+                                      std::uint32_t dstArrayElement) {
+        writeImage(bindingCount, view, sampler, layout, type, dstArrayElement);
     }
 
     void DescriptorWriter::clear() {
@@ -1703,8 +1791,7 @@ namespace kvk {
         bindingCount = 0;
     }
 
-    void DescriptorWriter::updateSet(VkDevice device,
-                                        VkDescriptorSet set) {
+    void DescriptorWriter::updateSet(VkDevice device, VkDescriptorSet set) {
         KVK_PROFILE();
         for(auto& write : writes) {
             write.dstSet = set;
@@ -1721,11 +1808,15 @@ namespace kvk {
         KVK_PROFILE();
         frameIndex = state.currentFrame;
         FrameData& frame = state.frames[state.currentFrame];
-        vkWaitForFences(state.device,
+        VkResult res = vkWaitForFences(state.device,
                         1,
                         &frame.inFlightFence,
                         VK_TRUE,
                         std::numeric_limits<std::uint64_t>::max());
+        if(res != VK_SUCCESS) {
+            logInfo("Wait for fence failed %d",res);
+            assert(false);
+        }
         std::uint32_t imageIndex;
 
         //
@@ -1735,7 +1826,6 @@ namespace kvk {
             (*iter)();
         }
         frame.deletionQueue.clear();
-        frame.descriptors.clearPools(state.device);
 
         VkResult result = vkAcquireNextImageKHR(state.device,
                                                 state.swapchain,
@@ -1793,11 +1883,11 @@ namespace kvk {
         };
 
         std::lock_guard lck (frame.queue->submitMutex);
-        if(vkQueueSubmit(frame.queue->handle,
+        if(VkResult res = vkQueueSubmit(frame.queue->handle,
                          1,
                          &submitInfo,
-                         frame.inFlightFence) != VK_SUCCESS) {
-            logError("Queue submit failed");
+                         frame.inFlightFence)) {
+            logError("Queue submit failed: %d", res);
             return ReturnCode::UNKNOWN;
         }
 
@@ -1831,26 +1921,20 @@ namespace kvk {
         mesh.indexCount = indices.size();
 
         kvk::ReturnCode rc = createBuffer(mesh.vertices,
-            state.allocator,
-            vertexBufferSize,
-            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-            VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-            VMA_MEMORY_USAGE_GPU_ONLY);
+                                          state.device,
+                                          state.allocator,
+                                          vertexBufferSize,
+                                          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                                          VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                                          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                                          VMA_MEMORY_USAGE_GPU_ONLY);
 
         if(rc != kvk::ReturnCode::OK) {
             return rc;
         }
 
-        VkBufferDeviceAddressInfo deviceAddressInfo = {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-            .buffer = mesh.vertices.buffer
-        };
-
-        mesh.vertexBufferAddress = vkGetBufferDeviceAddress(state.device,
-            &deviceAddressInfo);
-
         rc = createBuffer(mesh.indices,
+                          state.device,
                           state.allocator,
                           indexBufferSize,
                           VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
@@ -1863,6 +1947,7 @@ namespace kvk {
 
         kvk::AllocatedBuffer stagingBuffer;
         rc = createBuffer(stagingBuffer,
+                          state.device,
                           state.allocator,
                           vertexBufferSize + indexBufferSize,
                           VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -1932,22 +2017,13 @@ namespace kvk {
         bindingCount = 0;
     }
 
-    DescriptorSetLayoutBuilder& DescriptorSetLayoutBuilder::addBinding(const VkDescriptorType type) {
+    DescriptorSetLayoutBuilder& DescriptorSetLayoutBuilder::addBinding(VkDescriptorType type, std::uint32_t descriptorCount, VkDescriptorBindingFlags flags) {
         bindings[bindingCount] = VkDescriptorSetLayoutBinding {
             .binding = bindingCount,
             .descriptorType = type,
-            .descriptorCount = 1
+            .descriptorCount = descriptorCount
         };
-        bindingCount++;
-        return *this;
-    }
-
-    DescriptorSetLayoutBuilder& DescriptorSetLayoutBuilder::addBinding(const VkDescriptorType type, std::uint32_t binding) {
-        bindings[bindingCount] = VkDescriptorSetLayoutBinding {
-            .binding = binding,
-            .descriptorType = type,
-            .descriptorCount = 1
-        };
+        flagArray[bindingCount] = flags;
         bindingCount++;
         return *this;
     }
@@ -1956,10 +2032,16 @@ namespace kvk {
                                            VkDevice device,
                                            VkShaderStageFlags stage) {
         KVK_PROFILE();
+        VkDescriptorSetLayoutBindingFlagsCreateInfo flags = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+            .bindingCount = bindingCount,
+            .pBindingFlags = flagArray
+        };
         if(kvk::createDescriptorSetLayout(layout,
                                           device,
                                           stage,
-                                          std::span(bindings, bindingCount)) != kvk::ReturnCode::OK) {
+                                          std::span(bindings, bindingCount),
+                                          &flags) != kvk::ReturnCode::OK) {
             logError("Could not create descriptor layout");
             return false;
         }
@@ -2086,8 +2168,10 @@ namespace kvk {
                            bool hasSecondaryQueue) {
         KVK_PROFILE();
         vkGetDeviceQueue(state.device, queueFamilyIndex, 0, &queue.handle);
+        logInfo("Queue 0x%llx, flags: %u", (std::uint64_t)queue.handle, flags);
         if(hasSecondaryQueue) {
             vkGetDeviceQueue(state.device, queueFamilyIndex, 1, &queue.secondaryHandle);
+            logInfo("Queue 0x%llx, flags: %u", (std::uint64_t)queue.secondaryHandle, flags);
         }
 
         queue.familyIndex = queueFamilyIndex;
@@ -2161,7 +2245,7 @@ namespace kvk {
         //}
         //assert(bestScore != std::numeric_limits<std::uint32_t>::max());
         std::uint32_t familyIndex;
-        if(desiredQueueFlags & VK_QUEUE_TRANSFER_BIT) {
+        if(desiredQueueFlags == VK_QUEUE_TRANSFER_BIT) {
             familyIndex = 1;
         } else {
             familyIndex = 0;

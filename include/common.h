@@ -1,5 +1,6 @@
 #pragma once
 #include <stdio.h>
+#include <cstdint>
 
 #ifdef PROFILER_ENABLED
 
@@ -21,6 +22,11 @@
 #define KVK_SET_THREAD_NAME(name)
 
 #endif
+
+#define KB(x) (1024ull * std::uint64_t(x))
+#define MB(x) (1024ull * KB(x))
+#define GB(x) (1024ull * MB(x))
+#define TB(x) (1024ull * GB(x))
 
 namespace kvk {
 

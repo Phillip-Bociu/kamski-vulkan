@@ -79,6 +79,7 @@ namespace kvk {
         VkBuffer buffer;
         VmaAllocation allocation;
         VmaAllocationInfo info;
+        VkDeviceAddress address;
     };
 
     struct DescriptorAllocator {
@@ -125,26 +126,44 @@ namespace kvk {
                         VkImageView view,
                         VkSampler sampler,
                         VkImageLayout layout,
-                        VkDescriptorType type);
+                        VkDescriptorType type,
+                        std::uint32_t arrayOffset = 0);
         void writeImage(VkImageView view,
                         VkSampler sampler,
                         VkImageLayout layout,
-                        VkDescriptorType type);
+                        VkDescriptorType type,
+                        std::uint32_t arrayOffset = 0);
+        void writeImages(std::span<VkDescriptorImageInfo> imageInfos,
+                         VkDescriptorType type,
+                         std::uint32_t arrayOffset = 0);
+        void writeImages(int binding,
+                         std::span<VkDescriptorImageInfo> imageInfos,
+                         VkDescriptorType type,
+                         std::uint32_t arrayOffset = 0);
+
         void writeBuffer(int binding,
                          VkBuffer buffer,
                          const std::uint64_t size,
                          const std::uint64_t offset,
-                         VkDescriptorType type);
+                         VkDescriptorType type,
+                         std::uint32_t arrayOffset = 0);
         void writeBuffer(VkBuffer buffer,
                          const std::uint64_t size,
                          const std::uint64_t offset,
-                         VkDescriptorType type);
+                         VkDescriptorType type,
+                         std::uint32_t arrayOffset = 0);
+        void writeBuffers(std::span<VkDescriptorBufferInfo> bufferInfos,
+                          VkDescriptorType type,
+                          std::uint32_t arrayOffset = 0);
+        void writeBuffers(int binding,
+                          std::span<VkDescriptorBufferInfo> bufferInfos,
+                          VkDescriptorType type,
+                          std::uint32_t arrayOffset = 0);
 
         void clear();
         void updateSet(VkDevice device,
                        VkDescriptorSet set);
     };
-
     
     struct RenderPass {
         VkCommandBuffer cmd;
@@ -190,11 +209,11 @@ namespace kvk {
 
     struct DescriptorSetLayoutBuilder {
         DescriptorSetLayoutBuilder();
+        VkDescriptorBindingFlags flagArray[64];
         VkDescriptorSetLayoutBinding bindings[64];
         std::uint32_t bindingCount;
         
-        DescriptorSetLayoutBuilder& addBinding(VkDescriptorType type);
-        DescriptorSetLayoutBuilder& addBinding(const VkDescriptorType type, std::uint32_t binding);
+        DescriptorSetLayoutBuilder& addBinding(VkDescriptorType type, std::uint32_t descriptorCount = 1, VkDescriptorBindingFlags flags = 0);
 
         bool build(VkDescriptorSetLayout& layout,
                    VkDevice device,
@@ -417,6 +436,7 @@ namespace kvk {
                                  const std::uint32_t y);
 
     ReturnCode createBuffer(AllocatedBuffer& buffer,
+                            VkDevice device,
                             VmaAllocator allocator,
                             std::uint64_t size,
                             VkBufferUsageFlags bufferUsage,

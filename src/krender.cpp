@@ -535,7 +535,7 @@ namespace kvk {
 
         VkPresentModeKHR chosenPresentMode = surfacePresentModes[0];
         for (const VkPresentModeKHR pm : surfacePresentModes) {
-            if (pm == VK_PRESENT_MODE_FIFO_KHR) {
+            if (pm == VK_PRESENT_MODE_MAILBOX_KHR) {
                 chosenPresentMode = pm;
                 break;
             }

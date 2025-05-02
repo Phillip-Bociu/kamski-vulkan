@@ -256,6 +256,7 @@ namespace kvk {
         VkPipelineRenderingCreateInfo renderInfo;
         VkPipelineRasterizationStateCreateInfo rasterizer;
 
+        PipelineBuilder& setShader(VkShaderModule computeShader);
         PipelineBuilder& setShaders(VkShaderModule vertexShader, VkShaderModule fragmentShader);
         PipelineBuilder& setInputTopology(VkPrimitiveTopology topology);
         PipelineBuilder& setPolygonMode(VkPolygonMode poly);
@@ -375,7 +376,7 @@ namespace kvk {
     };
 
 
-    static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 1;
+    static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 3;
     struct RendererState {
         std::uint32_t currentFrame;
 

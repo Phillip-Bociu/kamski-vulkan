@@ -23,7 +23,6 @@
 
 #include <GLFW/glfw3.h>
 
-static bool lmao = false;
 namespace kvk {
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -434,9 +433,12 @@ namespace kvk {
         CHECK_FEATURE(features12, descriptorBindingPartiallyBound);
         CHECK_FEATURE(features12, descriptorBindingVariableDescriptorCount);
         CHECK_FEATURE(features12, shaderSampledImageArrayNonUniformIndexing);
+        CHECK_FEATURE(features12, drawIndirectCount);
         CHECK_FEATURE(features11, shaderDrawParameters);
         CHECK_FEATURE(allDeviceFeatures.features, samplerAnisotropy);
         CHECK_FEATURE(allDeviceFeatures.features, multiDrawIndirect);
+        CHECK_FEATURE(allDeviceFeatures.features, drawIndirectFirstInstance);
+
 
 #undef CHECK_FEATURE
 
@@ -455,6 +457,7 @@ namespace kvk {
         features12 = VkPhysicalDeviceVulkan12Features {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
             .pNext = &features13,
+            .drawIndirectCount = VK_TRUE,
             .shaderSampledImageArrayNonUniformIndexing = VK_TRUE,
             .descriptorBindingPartiallyBound = VK_TRUE,
             .descriptorBindingVariableDescriptorCount = VK_TRUE,
@@ -467,6 +470,7 @@ namespace kvk {
             .pNext = &features12,
             .features = {
                 .multiDrawIndirect = VK_TRUE,
+                .drawIndirectFirstInstance = VK_TRUE,
                 .samplerAnisotropy = VK_TRUE,
             },
         };
@@ -619,8 +623,6 @@ namespace kvk {
                             0,
                             VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT);
         }));
-
-        lmao = true;
         return ReturnCode::OK;
     }
 
@@ -976,6 +978,18 @@ namespace kvk {
 
     PipelineBuilder& PipelineBuilder::addPushConstantRange(VkShaderStageFlags stage, std::uint32_t size, std::uint32_t offset) {
         pushConstantRanges.emplace_back(stage, offset, size);
+        return *this;
+    }
+
+    PipelineBuilder& PipelineBuilder::setShader(VkShaderModule computeShaders) {
+        shaderStages.clear();
+        VkPipelineShaderStageCreateInfo cs = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+            .module = computeShaders,
+            .pName = "main",
+        };
+        shaderStages.push_back(cs);
         return *this;
     }
 

@@ -103,7 +103,7 @@ function(addShaders target custom_target SHADERS)
         add_custom_command(
    OUTPUT ${SPIRV}
    COMMAND ${CMAKE_COMMAND} -E make_directory "${PROJECT_BINARY_DIR}/shaders/"
-   COMMAND ${GLSL_VALIDATOR} -V ${GLSL} -o ${SPIRV}
+   COMMAND ${GLSL_VALIDATOR} -V ${GLSL} -o ${SPIRV} --quiet
    DEPENDS ${GLSL})
         list(APPEND BINARY_LIST ${SPIRV})
     endforeach(GLSL)

@@ -274,6 +274,8 @@ namespace kvk {
         PipelineBuilder& enableBlendingAdditive();
         PipelineBuilder& enableBlendingAlpha();
 
+        PipelineBuilder& disableBlending();
+
         PipelineBuilder& addPushConstantRange(VkShaderStageFlags stage,
                                               std::uint32_t size,
                                               std::uint32_t offset = 0);

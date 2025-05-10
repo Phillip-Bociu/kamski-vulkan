@@ -366,6 +366,10 @@ namespace kvk {
             return ReturnCode::DEVICE_NOT_FOUND;
         }
 
+        VkPhysicalDeviceProperties props;
+        vkGetPhysicalDeviceProperties(state.physicalDevice, &props);
+        state.limits = props.limits;
+
         /*=====================================
                 Logical device creation
           =====================================*/

@@ -391,6 +391,7 @@ namespace kvk {
         std::uint32_t graphicsFamilyIndex;
         std::uint32_t presentFamilyIndex;
         std::uint32_t computeFamilyIndex;
+        VkPhysicalDeviceLimits limits;
 
         Queue* queues;
         std::uint32_t queueCount;

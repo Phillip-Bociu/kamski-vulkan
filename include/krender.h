@@ -372,8 +372,6 @@ namespace kvk {
         VkSemaphore imageAvailableSemaphore;
         VkSemaphore renderFinishedSemaphore;
 
-        DescriptorAllocator descriptors;
-
         std::vector<std::function<void()>> deletionQueue;
     };
 
@@ -398,6 +396,7 @@ namespace kvk {
 
         VkSurfaceKHR surface;
 
+        DescriptorAllocator descriptors;
         FrameData frames[MAX_IN_FLIGHT_FRAMES];
 
         AllocatedImage drawImage;

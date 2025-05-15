@@ -575,11 +575,7 @@ namespace kvk {
         };
 
         state.gpDescriptorAllocator.init(state.device, 1000, ratios);
-        for(int frameIndex = 0; frameIndex != MAX_IN_FLIGHT_FRAMES; frameIndex++) {
-            state.frames[frameIndex].descriptors.init(state.device,
-                                                      1000,
-                                                      ratios);
-        }
+        state.descriptors.init(state.device, 1000, ratios);
 
         if(createSwapchain(state,
                            chosenExtent,

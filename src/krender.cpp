@@ -419,6 +419,9 @@ namespace kvk {
         VkPhysicalDeviceFeatures2 allDeviceFeatures = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
             .pNext = &features12,
+            .features = {
+                .fragmentStoresAndAtomics = VK_TRUE,
+            },
         };
 
         vkGetPhysicalDeviceFeatures2(state.physicalDevice,
@@ -442,6 +445,7 @@ namespace kvk {
         CHECK_FEATURE(allDeviceFeatures.features, samplerAnisotropy);
         CHECK_FEATURE(allDeviceFeatures.features, multiDrawIndirect);
         CHECK_FEATURE(allDeviceFeatures.features, drawIndirectFirstInstance);
+        CHECK_FEATURE(allDeviceFeatures.features, fragmentStoresAndAtomics);
 
 
 #undef CHECK_FEATURE
@@ -476,6 +480,7 @@ namespace kvk {
                 .multiDrawIndirect = VK_TRUE,
                 .drawIndirectFirstInstance = VK_TRUE,
                 .samplerAnisotropy = VK_TRUE,
+                .fragmentStoresAndAtomics = VK_TRUE,
             },
         };
 
@@ -539,7 +544,7 @@ namespace kvk {
 
         VkPresentModeKHR chosenPresentMode = surfacePresentModes[0];
         for (const VkPresentModeKHR pm : surfacePresentModes) {
-            if (pm == VK_PRESENT_MODE_MAILBOX_KHR) {
+            if (pm == VK_PRESENT_MODE_IMMEDIATE_KHR) {
                 chosenPresentMode = pm;
                 break;
             }

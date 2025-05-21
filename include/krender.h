@@ -376,7 +376,7 @@ namespace kvk {
     };
 
 
-    static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 3;
+    static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 2;
     struct RendererState {
         std::uint32_t currentFrame;
 

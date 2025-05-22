@@ -406,6 +406,7 @@ namespace kvk {
 
         VkPhysicalDeviceVulkan11Features features11 = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+            .storageBuffer16BitAccess = VK_TRUE,
         };
         VkPhysicalDeviceVulkan13Features features13 = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
@@ -414,6 +415,7 @@ namespace kvk {
         VkPhysicalDeviceVulkan12Features features12 = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
             .pNext = &features13,
+            .shaderFloat16 = VK_TRUE,
         };
 
         VkPhysicalDeviceFeatures2 allDeviceFeatures = {
@@ -421,6 +423,7 @@ namespace kvk {
             .pNext = &features12,
             .features = {
                 .fragmentStoresAndAtomics = VK_TRUE,
+                .shaderInt16 = VK_TRUE,
             },
         };
 
@@ -440,19 +443,22 @@ namespace kvk {
         CHECK_FEATURE(features12, descriptorBindingPartiallyBound);
         CHECK_FEATURE(features12, descriptorBindingVariableDescriptorCount);
         CHECK_FEATURE(features12, shaderSampledImageArrayNonUniformIndexing);
+        CHECK_FEATURE(features12, shaderFloat16);
         CHECK_FEATURE(features12, drawIndirectCount);
         CHECK_FEATURE(features11, shaderDrawParameters);
+        CHECK_FEATURE(features11, storageBuffer16BitAccess);
         CHECK_FEATURE(allDeviceFeatures.features, samplerAnisotropy);
         CHECK_FEATURE(allDeviceFeatures.features, multiDrawIndirect);
         CHECK_FEATURE(allDeviceFeatures.features, drawIndirectFirstInstance);
         CHECK_FEATURE(allDeviceFeatures.features, fragmentStoresAndAtomics);
-
+        CHECK_FEATURE(allDeviceFeatures.features, shaderInt16);
 
 #undef CHECK_FEATURE
 
         features11 = VkPhysicalDeviceVulkan11Features {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
-            .shaderDrawParameters = VK_TRUE
+            .storageBuffer16BitAccess = VK_TRUE,
+            .shaderDrawParameters = VK_TRUE,
         };
 
         features13 = VkPhysicalDeviceVulkan13Features {
@@ -466,6 +472,7 @@ namespace kvk {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
             .pNext = &features13,
             .drawIndirectCount = VK_TRUE,
+            .shaderFloat16 = VK_TRUE,
             .shaderSampledImageArrayNonUniformIndexing = VK_TRUE,
             .descriptorBindingPartiallyBound = VK_TRUE,
             .descriptorBindingVariableDescriptorCount = VK_TRUE,
@@ -481,6 +488,7 @@ namespace kvk {
                 .drawIndirectFirstInstance = VK_TRUE,
                 .samplerAnisotropy = VK_TRUE,
                 .fragmentStoresAndAtomics = VK_TRUE,
+                .shaderInt16 = VK_TRUE,
             },
         };
 

@@ -23,6 +23,7 @@
 
 #include <GLFW/glfw3.h>
 
+
 namespace kvk {
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -416,6 +417,7 @@ namespace kvk {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
             .pNext = &features13,
             .shaderFloat16 = VK_TRUE,
+            .samplerFilterMinmax = VK_TRUE,
         };
 
         VkPhysicalDeviceFeatures2 allDeviceFeatures = {
@@ -439,6 +441,7 @@ namespace kvk {
         CHECK_FEATURE(features13, synchronization2);
         CHECK_FEATURE(features13, dynamicRendering);
         CHECK_FEATURE(features12, bufferDeviceAddress);
+        CHECK_FEATURE(features12, samplerFilterMinmax);
         CHECK_FEATURE(features12, runtimeDescriptorArray);
         CHECK_FEATURE(features12, descriptorBindingPartiallyBound);
         CHECK_FEATURE(features12, descriptorBindingVariableDescriptorCount);
@@ -477,6 +480,7 @@ namespace kvk {
             .descriptorBindingPartiallyBound = VK_TRUE,
             .descriptorBindingVariableDescriptorCount = VK_TRUE,
             .runtimeDescriptorArray = VK_TRUE,
+            .samplerFilterMinmax = VK_TRUE,
             .bufferDeviceAddress = VK_TRUE,
         };
 
@@ -634,7 +638,9 @@ namespace kvk {
                             VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
                             VK_PIPELINE_STAGE_2_NONE,
                             0,
-                            VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT);
+                            VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT,
+                            VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT,
+                            VK_IMAGE_ASPECT_DEPTH_BIT);
         }));
         return ReturnCode::OK;
     }
@@ -739,7 +745,7 @@ namespace kvk {
                          state,
                          VK_FORMAT_D32_SFLOAT,
                          drawImageExtent,
-                         VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+                         VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
 
         if(rc != ReturnCode::OK) {
             logError("Could not create depth image");
@@ -831,7 +837,12 @@ namespace kvk {
                                      transitionImage(cmd,
                                                      state.depthImage.image,
                                                      VK_IMAGE_LAYOUT_UNDEFINED,
-                                                     VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+                                                     VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                                                     VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                                                     VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_MEMORY_READ_BIT,
+                                                     VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                                                     VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_MEMORY_READ_BIT,
+                                                     VK_IMAGE_ASPECT_DEPTH_BIT);
                                  }));
         return rc;
     }
@@ -922,7 +933,33 @@ namespace kvk {
         specializationConstantData[shaderStage].resize(specializationConstantData[shaderStage].size() + size);
         memcpy(specializationConstantData[shaderStage].data(), data, size);
 
-        specializationConstants[shaderStage].emplace_back(entry);
+        auto toFind = std::find_if(specializationConstants[shaderStage].begin(),
+                                   specializationConstants[shaderStage].end(),
+                                   [constantId](const VkSpecializationMapEntry& entry) {
+                                       return entry.constantID == constantId;
+                                   });
+        if(toFind == specializationConstants[shaderStage].end()) {
+            specializationConstants[shaderStage].emplace_back(entry);
+        } else {
+            *toFind = entry;
+        }
+        return *this;
+    }
+
+    PipelineBuilder& PipelineBuilder::clearSpecializationConstants(const ShaderStage shaderStage) {
+        if(shaderStage == SHADER_STAGE_COUNT) {
+            for(auto& v : specializationConstants) {
+                v.clear();
+            }
+
+            for(auto& v : specializationConstantData) {
+                v.clear();
+            }
+        } else {
+            specializationConstants[shaderStage].clear();
+            specializationConstantData[shaderStage].clear();
+        }
+
         return *this;
     }
 
@@ -1159,7 +1196,7 @@ namespace kvk {
                                      1,
                                      &createInfo,
                                      nullptr,
-                                     &pipeline.pipeline) != VK_SUCCESS) {
+                                     &pipeline.handle) != VK_SUCCESS) {
             logError("Could not create graphics pipeline");
             return ReturnCode::UNKNOWN;
         }
@@ -1189,6 +1226,20 @@ namespace kvk {
         }
 
         assert(shaderStages.size() == 1);
+
+        VkSpecializationInfo specializationInfo;
+        if(!specializationConstants[SHADER_STAGE_COMPUTE].empty()) {
+            specializationInfo = {
+                .mapEntryCount = std::uint32_t(specializationConstants[SHADER_STAGE_COMPUTE].size()),
+                .pMapEntries = specializationConstants[SHADER_STAGE_COMPUTE].data(),
+                .dataSize = specializationConstantData[SHADER_STAGE_COMPUTE].size(),
+                .pData = specializationConstantData[SHADER_STAGE_COMPUTE].data(),
+            };
+            shaderStages[0].pSpecializationInfo = &specializationInfo;
+        } else {
+            shaderStages[0].pSpecializationInfo = nullptr;
+        }
+
         VkComputePipelineCreateInfo createInfo = {
             .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
             .flags = (allowDerivatives ? VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT : 0u) | (basePipeline != VK_NULL_HANDLE ? VK_PIPELINE_CREATE_DERIVATIVE_BIT : 0u),
@@ -1198,7 +1249,7 @@ namespace kvk {
             .basePipelineIndex = -1
         };
 
-        if(vkCreateComputePipelines(device, cache, 1, &createInfo, nullptr, &pipeline.pipeline) != VK_SUCCESS) {
+        if(vkCreateComputePipelines(device, cache, 1, &createInfo, nullptr, &pipeline.handle) != VK_SUCCESS) {
             logError("Could not create compute pipeline");
             return ReturnCode::UNKNOWN;
         }

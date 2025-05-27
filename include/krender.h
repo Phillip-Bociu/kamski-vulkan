@@ -64,7 +64,7 @@ namespace kvk {
 
     struct Pipeline {
         VkPipelineLayout layout;
-        VkPipeline pipeline;
+        VkPipeline handle;
     };
 
     struct AllocatedImage {
@@ -192,8 +192,8 @@ namespace kvk {
                                               VkAttachmentLoadOp loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
                                               float depthClear = 1.0f,
                                               std::uint32_t stencil = 0,
-                                              VkAttachmentStoreOp storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-                                              VkImageLayout imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+                                              VkAttachmentStoreOp storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                                              VkImageLayout imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
         RenderPassBuilder& setStencilAttachment(VkImageView view,
                                                 VkAttachmentLoadOp loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
@@ -232,6 +232,7 @@ namespace kvk {
         enum ShaderStage {
             SHADER_STAGE_VERTEX,
             SHADER_STAGE_FRAGMENT,
+            SHADER_STAGE_COMPUTE,
 
             SHADER_STAGE_COUNT
         };
@@ -281,16 +282,19 @@ namespace kvk {
                                               std::uint32_t offset = 0);
         PipelineBuilder& addDescriptorSetLayout(VkDescriptorSetLayout layout);
 
+        PipelineBuilder& clearSpecializationConstants(const ShaderStage shaderStage = SHADER_STAGE_COUNT);
         PipelineBuilder& addSpecializationConstantData(const void* data, const std::uint64_t size, std::uint32_t constantId, const ShaderStage shaderStage);
         template<typename T>
         PipelineBuilder& addSpecializationConstant(const T& constant, const std::uint32_t constantId, const ShaderStage shaderStage) {
             addSpecializationConstantData(&constant, sizeof(T), constantId, shaderStage);
+            return *this;
         }
 
         PipelineBuilder& addSpecializationConstantData(const void* data, const std::uint64_t size, const ShaderStage shaderStage);
         template<typename T>
         PipelineBuilder& addSpecializationConstant(const T& constant, const ShaderStage shaderStage) {
             addSpecializationConstantData(&constant, sizeof(T), shaderStage);
+            return *this;
         }
 
         ReturnCode build(Pipeline& pipeline,

@@ -8,6 +8,10 @@
 #include "vulkan/vulkan_core.h"
 
 namespace kvk {
+	/*=====================================
+	  Misc.
+	  =====================================*/
+    std::uint32_t getMipLevels(std::uint32_t width, std::uint32_t height);
 
 	/*=====================================
 	  Struct fillers
@@ -68,7 +72,8 @@ namespace kvk {
                          VkPipelineStageFlags2 srcStageMask  = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
                          VkAccessFlags2 srcAccessMask        = VK_ACCESS_2_MEMORY_WRITE_BIT,
                          VkPipelineStageFlags2 dstStageMask  = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                         VkAccessFlags2 dstAccessMask        = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT);
+                         VkAccessFlags2 dstAccessMask        = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT,
+                         VkImageAspectFlags aspectMask       = VK_IMAGE_ASPECT_COLOR_BIT);
 
 	void transitionImageMip(VkCommandBuffer cmd,
                             VkImage image,
@@ -79,7 +84,8 @@ namespace kvk {
                             VkPipelineStageFlags2 srcStageMask  = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
                             VkAccessFlags2 srcAccessMask        = VK_ACCESS_2_MEMORY_WRITE_BIT,
                             VkPipelineStageFlags2 dstStageMask  = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-                            VkAccessFlags2 dstAccessMask        = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT);
+                            VkAccessFlags2 dstAccessMask        = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT,
+                            VkImageAspectFlags aspectMask       = VK_IMAGE_ASPECT_COLOR_BIT);
 
 	void blitImageToImage(VkCommandBuffer cmd,
 						  VkImage src,

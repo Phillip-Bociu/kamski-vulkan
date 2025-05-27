@@ -102,16 +102,17 @@ namespace kvk {
 		return retval;
 	}
 
-	void transitionImageMip(VkCommandBuffer cmd,
-                            VkImage image,
-                            std::uint32_t baseMipLevel,
-                            std::uint32_t levelCount,
-                            VkImageLayout currentLayout,
-                            VkImageLayout newLayout,
-                            VkPipelineStageFlags2 srcStageMask,
-                            VkAccessFlags2 srcAccessMask,
-                            VkPipelineStageFlags2 dstStageMask,
-                            VkAccessFlags2 dstAccessMask) {
+	void transitionImageMip(const VkCommandBuffer cmd,
+                            const VkImage image,
+                            const std::uint32_t baseMipLevel,
+                            const std::uint32_t levelCount,
+                            const VkImageLayout currentLayout,
+                            const VkImageLayout newLayout,
+                            const VkPipelineStageFlags2 srcStageMask,
+                            const VkAccessFlags2 srcAccessMask,
+                            const VkPipelineStageFlags2 dstStageMask,
+                            const VkAccessFlags2 dstAccessMask,
+                            const VkImageAspectFlags aspectMask) {
         KVK_PROFILE();
         VkImageMemoryBarrier2 imageBarrier = {
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -122,16 +123,6 @@ namespace kvk {
             .oldLayout = currentLayout,
             .newLayout = newLayout,
         };
-
-
-        VkImageAspectFlags aspectMask;
-        if(newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL) {
-            aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-        } else if(newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
-            aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
-        } else {
-            aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        }
 
         imageBarrier.subresourceRange = imageSubresourceRange(aspectMask, baseMipLevel, levelCount);
         imageBarrier.image = image;
@@ -146,14 +137,15 @@ namespace kvk {
         vkCmdPipelineBarrier2(cmd, &depInfo);
     }
 
-    void transitionImage(VkCommandBuffer cmd,
-                         VkImage image,
-                         VkImageLayout currentLayout,
-                         VkImageLayout newLayout,
-                         VkPipelineStageFlags2 srcStageMask,
-                         VkAccessFlags2 srcAccessMask,
-                         VkPipelineStageFlags2 dstStageMask,
-                         VkAccessFlags2 dstAccessMask) {
+    void transitionImage(const VkCommandBuffer cmd,
+                         const VkImage image,
+                         const VkImageLayout currentLayout,
+                         const VkImageLayout newLayout,
+                         const VkPipelineStageFlags2 srcStageMask,
+                         const VkAccessFlags2 srcAccessMask,
+                         const VkPipelineStageFlags2 dstStageMask,
+                         const VkAccessFlags2 dstAccessMask,
+                         const VkImageAspectFlags aspectMask) {
         transitionImageMip(cmd,
                            image,
                            0,
@@ -163,7 +155,8 @@ namespace kvk {
                            srcStageMask,
                            srcAccessMask,
                            dstStageMask,
-                           dstAccessMask);
+                           dstAccessMask,
+                           aspectMask);
     }
 
 
@@ -331,4 +324,15 @@ namespace kvk {
 
 		return retval;
 	}
+
+    std::uint32_t getMipLevels(std::uint32_t width, std::uint32_t height) {
+        std::uint32_t retval = 0;
+        while(width != 0 && height != 0) {
+            retval++;
+            width /= 2;
+            height /= 2;
+        }
+        return retval;
+    }
+
 }

@@ -23,14 +23,9 @@
 
 #endif
 
-#define KB(x) (1024ull * std::uint64_t(x))
-#define MB(x) (1024ull * KB(x))
-#define GB(x) (1024ull * MB(x))
-#define TB(x) (1024ull * GB(x))
-
 namespace kvk {
 
-#if defined(KVK_DEBUG) && !defined(logDebug)
+#if defined(KAMSKI_DEBUG) && !defined(logDebug)
 
 #if defined (_WIN32) 
 #define logDebug(format, ...)   printf("[DEBUG][%5d]: " __FILE__ ": " format "\n", __LINE__, __VA_ARGS__)

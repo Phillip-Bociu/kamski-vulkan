@@ -21,7 +21,9 @@
 #include "krender_win32.h"
 #endif
 
+#if defined(KVK_GLFW)
 #include <GLFW/glfw3.h>
+#endif
 
 
 namespace kvk {

@@ -11,8 +11,6 @@
 #endif // _WIN32
 #endif // KVK_GLFW
 
-#define NOMINMAX
-
 #include <cstdint>
 #include <optional>
 #include <vector>

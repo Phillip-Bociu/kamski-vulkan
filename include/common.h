@@ -25,15 +25,17 @@
 
 namespace kvk {
 
-#if defined(KAMSKI_DEBUG) && !defined(logDebug)
+#if !defined(logDebug)
+#if defined(KAMSKI_DEBUG)
 
-#if defined (_WIN32) 
+#if defined (_MSC_VER) 
+
 #define logDebug(format, ...)   printf("[DEBUG][%5d]: " __FILE__ ": " format "\n", __LINE__, __VA_ARGS__)
 #define logInfo(format, ...)    printf("[INFO] [%5d]: " __FILE__ ": " format "\n", __LINE__, __VA_ARGS__)
 #define logWarning(format, ...) printf("[WARN] [%5d]: " __FILE__ ": " format "\n", __LINE__, __VA_ARGS__)
 #define logError(format, ...)   printf("[ERROR][%5d]: " __FILE__ ": " format "\n", __LINE__, __VA_ARGS__)
 
-#elif defined (__linux__)
+#elif defined (__clang__) || defined(__GNUC__)
 
 #define logDebug(format, ...)   printf("[DEBUG][%5d]: " __FILE__ ": " format "\n", __LINE__ __VA_OPT__(,) __VA_ARGS__)
 #define logInfo(format, ...)    printf("[INFO] [%5d]: " __FILE__ ": " format "\n", __LINE__ __VA_OPT__(,) __VA_ARGS__)
@@ -41,6 +43,7 @@ namespace kvk {
 #define logError(format, ...)   printf("[ERROR][%5d]: " __FILE__ ": " format "\n", __LINE__ __VA_OPT__(,) __VA_ARGS__)
 
 #endif
+
 #else
 
 #define logDebug(format, ...)
@@ -48,6 +51,7 @@ namespace kvk {
 #define logWarning(format, ...)
 #define logError(format, ...)
 
+#endif
 #endif
 
 enum class [[nodiscard]] ReturnCode {
@@ -64,6 +68,8 @@ enum class [[nodiscard]] ReturnCode {
 
 }
 
+#ifndef defer
+
 template<typename Fn>
 class _deferClass {
     public:
@@ -77,3 +83,5 @@ class _deferClass {
 #define CONCAT2(a, b) CONCAT(a, b)
 #define MAKE_DEFER_NAME() CONCAT2(anon_deferVar_, __COUNTER__)
 #define defer const _deferClass MAKE_DEFER_NAME() = [&]()
+
+#endif

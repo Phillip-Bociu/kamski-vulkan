@@ -1,3 +1,4 @@
+#include "../../../src/KamskiEngine/KamskiTypes.h"
 #include "common.h"
 #include "utils.h"
 #include "vulkan/vulkan_core.h"

@@ -11,6 +11,23 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS true)
 set(CMAKE_TRY_COMPILE_TARGET_TYPE "STATIC_LIBRARY")
 
+IF(DEFINED KAMSKI_DEBUG)
+	message("DEBUG BUILD")
+	set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
+	add_compile_definitions(KAMSKI_DEBUG)
+	set(CMAKE_BUILD_TYPE Debug)
+ELSE()
+	message("RELEASE BUILD")
+	set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
+	set(CMAKE_BUILD_TYPE Release)
+	set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+	IF(DEFINED KAMSKI_LLVM)
+		add_compile_options(-Ofast)
+	ELSE()
+		add_compile_options(/O2 /fp:fast)
+	ENDIF()
+ENDIF()
+
 ###########################################################################################
 # Dependencies
 ###########################################################################################
@@ -40,6 +57,7 @@ else()
     target_compile_definitions(kamskiVk PUBLIC KVK_GLFW)
     target_link_libraries(kamskiVk PUBLIC glfw)
 endif()
+target_compile_options(kamskiVk PUBLIC /Zi)
 
 target_link_directories(kamskiVk PUBLIC $ENV{VULKAN_SDK}/Lib/)
 if (WIN32)

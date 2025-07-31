@@ -1,3 +1,4 @@
+#include "../../../src/KamskiEngine/KamskiTypes.h"
 #include "krender_win32.h"
 #include "krender.h"
 #include <vulkan/vulkan_win32.h>

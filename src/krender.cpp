@@ -1,3 +1,4 @@
+#include "../../../src/KamskiEngine/KamskiTypes.h"
 #include "vulkan/vulkan_core.h"
 #include <cstdint>
 #include <limits>
@@ -126,7 +127,7 @@ namespace kvk {
         /*=====================================
                 Validation layer handling
           =====================================*/
-#ifdef KVK_DEBUG
+#ifdef KAMSKI_DEBUG
         logInfo("Adding validation layers");
         const char* desiredLayers[] = {
             "VK_LAYER_KHRONOS_validation",
@@ -167,7 +168,7 @@ namespace kvk {
 #endif // _WIN32
 #endif // KVK_GLKFW
 
-#ifdef KVK_DEBUG
+#ifdef KAMSKI_DEBUG
             VK_EXT_DEBUG_UTILS_EXTENSION_NAME
 #endif
         };
@@ -182,7 +183,7 @@ namespace kvk {
         VkInstanceCreateInfo instanceCreateInfo = {
             .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
             .pApplicationInfo = &appInfo,
-#if defined(KVK_DEBUG)
+#if defined(KAMSKI_DEBUG)
             .enabledLayerCount = sizeof(desiredLayers) / sizeof(desiredLayers[0]),
             .ppEnabledLayerNames = desiredLayers,
 #endif
@@ -198,7 +199,7 @@ namespace kvk {
         }
         logDebug("Instance created");
 
-#ifdef KVK_DEBUG
+#ifdef KAMSKI_DEBUG
         VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = {
             .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
             .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,

@@ -124,6 +124,7 @@ function(addShaders target custom_target SHADERS)
    COMMAND ${GLSL_VALIDATOR} -V ${GLSL} -o ${SPIRV} --quiet
    DEPENDS ${GLSL} ${ARGN})
         list(APPEND BINARY_LIST ${SPIRV})
+        install(FILES ${SPIRV} DESTINATION shaders/)
     endforeach(GLSL)
     add_custom_target(${custom_target} DEPENDS ${BINARY_LIST})
     add_dependencies(${target} ${custom_target})

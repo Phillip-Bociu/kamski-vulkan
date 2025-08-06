@@ -26,7 +26,6 @@
 #include <GLFW/glfw3.h>
 #endif
 
-
 namespace kvk {
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -420,6 +419,7 @@ namespace kvk {
         VkPhysicalDeviceVulkan12Features features12 = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
             .pNext = &features13,
+            .storageBuffer8BitAccess = VK_TRUE,
             .uniformAndStorageBuffer8BitAccess = VK_TRUE,
             .shaderFloat16 = VK_TRUE,
             .shaderInt8 = VK_TRUE,
@@ -450,6 +450,7 @@ namespace kvk {
         CHECK_FEATURE(features12, bufferDeviceAddress);
         CHECK_FEATURE(features12, samplerFilterMinmax);
         CHECK_FEATURE(features12, runtimeDescriptorArray);
+        CHECK_FEATURE(features12, storageBuffer8BitAccess);
         CHECK_FEATURE(features12, uniformAndStorageBuffer8BitAccess);
         CHECK_FEATURE(features12, shaderInt8);
         CHECK_FEATURE(features12, descriptorBindingPartiallyBound);
@@ -486,6 +487,7 @@ namespace kvk {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
             .pNext = &features13,
             .drawIndirectCount = VK_TRUE,
+            .storageBuffer8BitAccess = VK_TRUE,
             .uniformAndStorageBuffer8BitAccess = VK_TRUE,
             .shaderFloat16 = VK_TRUE,
             .shaderInt8 = VK_TRUE,

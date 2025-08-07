@@ -1757,14 +1757,14 @@ namespace kvk {
         VkResult result = vkAllocateDescriptorSets(device,
                                                     &allocInfo,
                                                     &set);
-        if(result == VK_ERROR_OUT_OF_POOL_MEMORY || result == VK_ERROR_FRAGMENTED_POOL) {
+        while(result == VK_ERROR_OUT_OF_POOL_MEMORY || result == VK_ERROR_FRAGMENTED_POOL) {
             fullPools.push_back(poolToUse);
             poolToUse = getPool(device);
             allocInfo.descriptorPool = poolToUse;
 
-            VK_CHECK(vkAllocateDescriptorSets(device,
-                                                &allocInfo,
-                                                &set));
+            result = vkAllocateDescriptorSets(device,
+                                              &allocInfo,
+                                              &set);
         }
         readyPools.push_back(poolToUse);
         return ReturnCode::OK;

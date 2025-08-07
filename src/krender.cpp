@@ -601,9 +601,9 @@ namespace kvk {
         }
 
         DescriptorAllocator::PoolSizeRatio ratios[] = {
-            DescriptorAllocator::PoolSizeRatio{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 },
-            DescriptorAllocator::PoolSizeRatio{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
-            DescriptorAllocator::PoolSizeRatio{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 },
+            DescriptorAllocator::PoolSizeRatio{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 30 },
+            DescriptorAllocator::PoolSizeRatio{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 30 },
+            DescriptorAllocator::PoolSizeRatio{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 40 },
             DescriptorAllocator::PoolSizeRatio{ VK_DESCRIPTOR_TYPE_SAMPLER, 100 },
             DescriptorAllocator::PoolSizeRatio{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 100 },
         };

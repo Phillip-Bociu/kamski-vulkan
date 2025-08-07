@@ -26,6 +26,8 @@
 #include <GLFW/glfw3.h>
 #endif
 
+static bool lmao = false;
+
 namespace kvk {
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -33,6 +35,7 @@ namespace kvk {
         const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
         void *pUserData) {
         logError("Validation layer: %s", pCallbackData->pMessage);
+        kassert(!lmao || messageSeverity != VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT);
         return VK_FALSE;
     }
 
@@ -525,6 +528,7 @@ namespace kvk {
             return ReturnCode::UNKNOWN;
         }
         logDebug("Logical device created");
+        lmao = true;
 
         state.queues = new Queue[uniqueQueueFamilies.size()];
         state.queueCount = uniqueQueueFamilies.size();

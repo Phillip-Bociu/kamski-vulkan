@@ -609,7 +609,7 @@ namespace kvk {
         };
 
         state.gpDescriptorAllocator.init(state.device, 1000, ratios);
-        state.descriptors.init(state.device, 1000, ratios);
+        state.descriptors.init(state.device, 100000, ratios);
 
         if(createSwapchain(state,
                            chosenExtent,

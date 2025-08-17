@@ -66,7 +66,7 @@ else ()
     target_link_libraries(kamskiVk PUBLIC vulkan VulkanMemoryAllocator glm-header-only)
 endif ()
 
-if(DEFINED PROFILE)
+if(DEFINED KAMSKI_PROFILE)
     message("PROFILER ENABLED")
 	option( TRACY_ENABLE "" ON)
 	option( TRACY_ON_DEMAND "" ON)

@@ -403,6 +403,7 @@ namespace kvk {
 
         AllocatedImage drawImage;
         AllocatedImage depthImage;
+        AllocatedImage imguiImage;
 
         DescriptorAllocator gpDescriptorAllocator;
 

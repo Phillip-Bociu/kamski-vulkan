@@ -99,10 +99,11 @@ namespace kvk {
         vs.seekg(0);
         vs.read((char*)vsData.data(), size);
 
-        return createShaderModuleFromMemory(shaderModule,
-                                            state,
-                                            vsData.data(),
-                                            size);
+        ReturnCode rc = createShaderModuleFromMemory(shaderModule,
+                                                     state,
+                                                     vsData.data(),
+                                                     size);
+        return rc;
     }
 
     ReturnCode init(RendererState& state, const InitSettings* settings) {
@@ -201,8 +202,8 @@ namespace kvk {
 #ifdef KAMSKI_DEBUG
         VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = {
             .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-            .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-            .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT| VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+            .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+            .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
             .pfnUserCallback = debugCallback,
             .pUserData = nullptr,
         };
@@ -602,6 +603,7 @@ namespace kvk {
 
         DescriptorAllocator::PoolSizeRatio ratios[] = {
             DescriptorAllocator::PoolSizeRatio{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 30 },
+            DescriptorAllocator::PoolSizeRatio{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 30 },
             DescriptorAllocator::PoolSizeRatio{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 30 },
             DescriptorAllocator::PoolSizeRatio{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 40 },
             DescriptorAllocator::PoolSizeRatio{ VK_DESCRIPTOR_TYPE_SAMPLER, 100 },
@@ -609,7 +611,7 @@ namespace kvk {
         };
 
         state.gpDescriptorAllocator.init(state.device, 1000, ratios);
-        state.descriptors.init(state.device, 100000, ratios);
+        state.descriptors.init(state.device, 1000000, ratios);
 
         if(createSwapchain(state,
                            chosenExtent,
@@ -762,7 +764,7 @@ namespace kvk {
                          state,
                          VK_FORMAT_D32_SFLOAT,
                          drawImageExtent,
-                         VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+                         VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
 
         if(rc != ReturnCode::OK) {
             logError("Could not create depth image");
@@ -2169,10 +2171,10 @@ namespace kvk {
             .storeOp = storeOp,
             .clearValue = {
                 .color = {
-                    clearColor.r,
-                    clearColor.g,
-                    clearColor.b,
-                    clearColor.a,
+                    clearColor[0],
+                    clearColor[1],
+                    clearColor[2],
+                    clearColor[3],
                 },
             },
         };

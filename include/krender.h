@@ -66,7 +66,7 @@ namespace kvk {
     };
 
     struct AllocatedImage {
-        VkImage image;
+        VkImage image = VK_NULL_HANDLE;
         VkImageView view;
         VmaAllocation allocation;
         VkExtent3D extent;
@@ -74,7 +74,7 @@ namespace kvk {
     };
 
     struct AllocatedBuffer {
-        VkBuffer buffer;
+        VkBuffer buffer = VK_NULL_HANDLE;
         VmaAllocation allocation;
         VmaAllocationInfo info;
         VkDeviceAddress address;
@@ -182,6 +182,11 @@ namespace kvk {
         RenderPassBuilder& addColorAttachment(VkImageView view,
                                               VkAttachmentLoadOp loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
                                               glm::vec4 clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
+                                              VkAttachmentStoreOp storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                                              VkImageLayout imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        RenderPassBuilder& addColorAttachment(VkImageView view,
+                                              VkAttachmentLoadOp loadOp,
+                                              glm::uvec4 clearValues,
                                               VkAttachmentStoreOp storeOp = VK_ATTACHMENT_STORE_OP_STORE,
                                               VkImageLayout imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
@@ -372,13 +377,12 @@ namespace kvk {
         VkCommandBuffer commandBuffer;
 
         VkSemaphore imageAvailableSemaphore;
-        VkSemaphore renderFinishedSemaphore;
 
         std::vector<std::function<void()>> deletionQueue;
     };
 
 
-    static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 2;
+    static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 1;
     struct RendererState {
         std::uint32_t currentFrame;
 
@@ -414,6 +418,7 @@ namespace kvk {
         std::uint32_t swapchainImageCount;
         std::vector<VkImage> swapchainImages;
         std::vector<VkImageView> swapchainImageViews;
+        std::vector<VkSemaphore> renderFinishedSemaphores;
         VkExtent2D swapchainExtent;
         VkSurfaceFormatKHR swapchainImageFormat;
         VkPresentModeKHR swapchainPresentMode;

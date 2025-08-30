@@ -202,7 +202,7 @@ namespace kvk {
 #ifdef KAMSKI_DEBUG
         VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = {
             .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-            .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+            .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
             .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
             .pfnUserCallback = debugCallback,
             .pUserData = nullptr,
@@ -631,10 +631,17 @@ namespace kvk {
             .flags = VK_FENCE_CREATE_SIGNALED_BIT,
         };
 
+        state.renderFinishedSemaphores.resize(imageCount);
+        for(int i = 0; i != imageCount; i++) {
+            if(vkCreateSemaphore(state.device, &semaphoreCreateInfo, nullptr, &state.renderFinishedSemaphores[i]) != VK_SUCCESS) {
+                logError("Could not create sync objects");
+                return ReturnCode::UNKNOWN;
+            }
+        }
+
         for(int i = 0; i != MAX_IN_FLIGHT_FRAMES; i++) {
             if(vkCreateSemaphore(state.device, &semaphoreCreateInfo, nullptr, &state.frames[i].imageAvailableSemaphore) != VK_SUCCESS ||
-               vkCreateSemaphore(state.device, &semaphoreCreateInfo, nullptr, &state.frames[i].renderFinishedSemaphore) != VK_SUCCESS ||
-               vkCreateFence    (state.device, &fenceCreateInfo    , nullptr, &state.frames[i].inFlightFence)              != VK_SUCCESS) {
+               vkCreateFence    (state.device, &fenceCreateInfo    , nullptr, &state.frames[i].inFlightFence)           != VK_SUCCESS) {
                 logError("Could not create sync objects");
                 return ReturnCode::UNKNOWN;
             }
@@ -817,20 +824,6 @@ namespace kvk {
             chosenExtent.width = std::clamp(x, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
             chosenExtent.height = std::clamp(y, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
         }
-
-        vkDestroyImageView(state.device,
-                           state.drawImage.view,
-                           nullptr);
-        vmaDestroyImage(state.allocator,
-                        state.drawImage.image,
-                        state.drawImage.allocation);
-
-        vkDestroyImageView(state.device,
-                           state.depthImage.view,
-                           nullptr);
-        vmaDestroyImage(state.allocator,
-                        state.depthImage.image,
-                        state.depthImage.allocation);
 
         ReturnCode rc = createSwapchain(state,
                                         chosenExtent,
@@ -1142,6 +1135,10 @@ namespace kvk {
     ReturnCode PipelineBuilder::build(Pipeline& pipeline,
                                       const VkDevice device) {
         KVK_PROFILE();
+        if(pipeline.handle != VK_NULL_HANDLE) {
+            vkDestroyPipeline(device, pipeline.handle, nullptr);
+        }
+
         if(!prebuiltLayout) {
             VkPipelineLayoutCreateInfo layoutCreateInfo = {
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -1224,6 +1221,9 @@ namespace kvk {
 
     ReturnCode PipelineBuilder::buildCompute(Pipeline& pipeline, const VkDevice device) {
         KVK_PROFILE();
+        if(pipeline.handle != VK_NULL_HANDLE) {
+            vkDestroyPipeline(device, pipeline.handle, nullptr);
+        }
         if(!prebuiltLayout) {
             VkPipelineLayoutCreateInfo layoutCreateInfo = {
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -1283,6 +1283,10 @@ namespace kvk {
                             VkBufferUsageFlags bufferUsage,
                             VmaMemoryUsage memoryUsage) {
         KVK_PROFILE();
+        if(buffer.buffer != VK_NULL_HANDLE) {
+            destroyBuffer(buffer, allocator);
+        }
+
         VkBufferCreateInfo bufferCreateInfo = {
             .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
             .size = size,
@@ -1332,6 +1336,10 @@ namespace kvk {
                            bool isCubemap,
                            std::uint32_t mipLevels) {
         KVK_PROFILE();
+        if(image.image != VK_NULL_HANDLE) {
+            destroyImage(image, state.device, state.allocator);
+        }
+
         if(mipLevels > 1) {
             VkFormatProperties formatProps;
             vkGetPhysicalDeviceFormatProperties(state.physicalDevice, format, &formatProps);
@@ -1396,7 +1404,7 @@ namespace kvk {
         KVK_PROFILE();
         const VkImageUsageFlags usageFlags = usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | (mipLevels > 1 ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0);
         const std::uint64_t size = extent.width * extent.height * extent.depth * 4;
-        AllocatedBuffer stagingBuffer;
+        AllocatedBuffer stagingBuffer = {};
         ReturnCode rc = createBuffer(stagingBuffer,
                                      state.device,
                                      state.allocator,
@@ -1545,7 +1553,7 @@ namespace kvk {
         const std::uint64_t size = extent.width * extent.height * 6 * 4;
         const std::uint64_t imageSize = extent.width * extent.height * 4;
 
-        AllocatedBuffer stagingBuffer;
+        AllocatedBuffer stagingBuffer = {};
         ReturnCode rc = createBuffer(stagingBuffer,
                                      state.device,
                                      state.allocator,
@@ -1962,13 +1970,8 @@ namespace kvk {
     ReturnCode endFrame(RendererState& state, FrameData& frame) {
         KVK_PROFILE();
         state.currentFrame = (state.currentFrame + 1) % MAX_IN_FLIGHT_FRAMES;
-        VkSemaphore waitSemaphores[] = {
-            frame.imageAvailableSemaphore
-        };
+            
 
-        VkSemaphore signalSemaphores[] = {
-            frame.renderFinishedSemaphore
-        };
         VkPipelineStageFlags waitStages[] = {
             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
         };
@@ -1976,12 +1979,12 @@ namespace kvk {
         VkSubmitInfo submitInfo = {
             .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
             .waitSemaphoreCount = 1,
-            .pWaitSemaphores = waitSemaphores,
+            .pWaitSemaphores = &frame.imageAvailableSemaphore,
             .pWaitDstStageMask = waitStages,
             .commandBufferCount = 1,
             .pCommandBuffers = &frame.commandBuffer,
             .signalSemaphoreCount = 1,
-            .pSignalSemaphores = signalSemaphores
+            .pSignalSemaphores = &state.renderFinishedSemaphores[frame.swapchainImageIndex],
         };
 
         std::lock_guard lck (frame.queue->submitMutex);
@@ -1996,7 +1999,7 @@ namespace kvk {
         VkPresentInfoKHR presentInfo = {
             .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
             .waitSemaphoreCount = 1,
-            .pWaitSemaphores = signalSemaphores,
+            .pWaitSemaphores = &state.renderFinishedSemaphores[frame.swapchainImageIndex],
             .swapchainCount = 1,
             .pSwapchains = &state.swapchain,
             .pImageIndices = &frame.swapchainImageIndex,
@@ -2047,7 +2050,7 @@ namespace kvk {
             return rc;
         }
 
-        kvk::AllocatedBuffer stagingBuffer;
+        kvk::AllocatedBuffer stagingBuffer = {};
         rc = createBuffer(stagingBuffer,
                           state.device,
                           state.allocator,
@@ -2177,6 +2180,32 @@ namespace kvk {
                     clearColor[3],
                 },
             },
+        };
+        return *this;
+    }
+
+    RenderPassBuilder& RenderPassBuilder::addColorAttachment(VkImageView view,
+                                                             VkAttachmentLoadOp loadOp,
+                                                             glm::uvec4 clearValues,
+                                                             VkAttachmentStoreOp storeOp,
+                                                             VkImageLayout imageLayout) {
+        VkRenderingAttachmentInfo& colorAttachment = colorAttachments.emplace_back();
+        colorAttachment = VkRenderingAttachmentInfo {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                .imageView = view,
+                .imageLayout = imageLayout,
+                .loadOp = loadOp,
+                .storeOp = storeOp,
+                .clearValue = {
+                    .color = {
+                        .uint32 = {
+                            clearValues[0],
+                            clearValues[1],
+                            clearValues[2],
+                            clearValues[3],
+                        },
+                    },
+                },
         };
         return *this;
     }

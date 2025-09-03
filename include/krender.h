@@ -231,6 +231,8 @@ namespace kvk {
         std::vector<VkPushConstantRange> pushConstantRanges;
         std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
         std::optional<VkPipelineLayout> prebuiltLayout;
+        std::vector<VkVertexInputAttributeDescription> vertexInputAttributes;
+        std::uint32_t vertexInputAttributesSize;
 
         enum ShaderStage {
             SHADER_STAGE_VERTEX,
@@ -279,6 +281,10 @@ namespace kvk {
         PipelineBuilder& enableBlendingAlpha();
 
         PipelineBuilder& disableBlending();
+
+        PipelineBuilder& addVertexInputAttribute(VkFormat format,
+                                                 std::uint32_t offset,
+                                                 std::uint32_t size);
 
         PipelineBuilder& addPushConstantRange(VkShaderStageFlags stage,
                                               std::uint32_t size,
@@ -407,7 +413,6 @@ namespace kvk {
 
         AllocatedImage drawImage;
         AllocatedImage depthImage;
-        AllocatedImage imguiImage;
 
         DescriptorAllocator gpDescriptorAllocator;
 

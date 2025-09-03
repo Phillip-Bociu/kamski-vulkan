@@ -860,6 +860,7 @@ namespace kvk {
     }
 
     PipelineBuilder::PipelineBuilder() {
+        vertexInputAttributesSize = 0;
         multisample = {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
             .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
@@ -933,6 +934,18 @@ namespace kvk {
 
     PipelineBuilder& PipelineBuilder::addSpecializationConstantData(const void* data, const std::uint64_t size, const ShaderStage shaderStage) {
         addSpecializationConstantData(data, size, specializationConstants[shaderStage].size(), shaderStage);
+        return *this;
+    }
+
+    PipelineBuilder& PipelineBuilder::addVertexInputAttribute(VkFormat format,
+                                                              std::uint32_t offset,
+                                                              std::uint32_t size) {
+        VkVertexInputAttributeDescription& attr = vertexInputAttributes.emplace_back();
+        attr.location = vertexInputAttributes.size() - 1;
+        attr.binding = 0;
+        attr.format = format;
+        attr.offset = offset;
+        vertexInputAttributesSize += size;
         return *this;
     }
 
@@ -1157,6 +1170,17 @@ namespace kvk {
             }
         } else {
             pipeline.layout = prebuiltLayout.value();
+        }
+
+        VkVertexInputBindingDescription bindingDesc = {
+            .stride = vertexInputAttributesSize,
+            .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
+        };
+        if(!vertexInputAttributes.empty()) {
+            inputState.vertexBindingDescriptionCount = 1;
+            inputState.pVertexBindingDescriptions = &bindingDesc;
+            inputState.vertexAttributeDescriptionCount = vertexInputAttributes.size();
+            inputState.pVertexAttributeDescriptions = vertexInputAttributes.data();
         }
 
         VkPipelineDynamicStateCreateInfo dynamicStateInfo = {

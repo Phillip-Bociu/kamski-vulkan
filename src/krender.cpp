@@ -432,6 +432,7 @@ namespace kvk {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
             .pNext = &features12,
             .features = {
+                .fillModeNonSolid = VK_TRUE,
                 .fragmentStoresAndAtomics = VK_TRUE,
                 .shaderInt16 = VK_TRUE,
             },
@@ -467,6 +468,7 @@ namespace kvk {
         CHECK_FEATURE(allDeviceFeatures.features, drawIndirectFirstInstance);
         CHECK_FEATURE(allDeviceFeatures.features, fragmentStoresAndAtomics);
         CHECK_FEATURE(allDeviceFeatures.features, shaderInt16);
+        CHECK_FEATURE(allDeviceFeatures.features, fillModeNonSolid);
 
 #undef CHECK_FEATURE
 
@@ -506,6 +508,7 @@ namespace kvk {
             .features = {
                 .multiDrawIndirect = VK_TRUE,
                 .drawIndirectFirstInstance = VK_TRUE,
+                .fillModeNonSolid = VK_TRUE,
                 .samplerAnisotropy = VK_TRUE,
                 .fragmentStoresAndAtomics = VK_TRUE,
                 .shaderInt16 = VK_TRUE,

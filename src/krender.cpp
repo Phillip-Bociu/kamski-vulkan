@@ -614,7 +614,7 @@ namespace kvk {
         };
 
         state.gpDescriptorAllocator.init(state.device, 1000, ratios);
-        state.descriptors.init(state.device, 1000000, ratios);
+        state.descriptors.init(state.device, 100000, ratios);
 
         if(createSwapchain(state,
                            chosenExtent,
@@ -1735,10 +1735,11 @@ namespace kvk {
         };
 
         VkDescriptorPool retval;
-        vkCreateDescriptorPool(device,
+        VkResult result = vkCreateDescriptorPool(device,
                                 &createInfo,
                                 nullptr,
                                 &retval);
+
         return retval;
     }
 

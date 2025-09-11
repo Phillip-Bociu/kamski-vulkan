@@ -1,4 +1,3 @@
-#include "../../../src/KamskiEngine/KamskiTypes.h"
 #include "vulkan/vulkan_core.h"
 #include <cstdint>
 #include <limits>
@@ -67,7 +66,7 @@ namespace kvk {
                                             RendererState& state,
                                             const std::uint32_t* shaderContents,
                                             const std::uint64_t shaderSize) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         VkShaderModuleCreateInfo createInfo = {
             .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
             .codeSize = shaderSize,
@@ -87,7 +86,7 @@ namespace kvk {
     ReturnCode createShaderModuleFromFile(VkShaderModule& shaderModule,
                                           RendererState& state,
                                           const char* shaderPath) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         std::ifstream vs(shaderPath, std::ios::ate | std::ios::binary);
         if(!vs.is_open()) {
             logError("File %s not found", shaderPath);
@@ -107,7 +106,7 @@ namespace kvk {
     }
 
     ReturnCode init(RendererState& state, const InitSettings* settings) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         /*===========================
                 User settings
           ===========================*/
@@ -660,7 +659,7 @@ namespace kvk {
                                  poolInfo.queue->handle,
                                  poolInfo.queue->submitMutex,
                                  [&](VkCommandBuffer cmd) {
-            KVK_PROFILE();
+            KAMSKI_PROFILE();
             transitionImage(cmd,
                             state.depthImage.image,
                             VK_IMAGE_LAYOUT_UNDEFINED,
@@ -680,7 +679,7 @@ namespace kvk {
                                VkPresentModeKHR presentMode,
                                std::uint32_t imageCount,
                                VkSwapchainKHR oldSwapchain) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         state.swapchainExtent = extent;
         state.swapchainImageFormat = format;
         state.swapchainPresentMode = presentMode;
@@ -800,7 +799,7 @@ namespace kvk {
     ReturnCode recreateSwapchain(RendererState& state,
                                  const std::uint32_t x,
                                  const std::uint32_t y) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         vkDeviceWaitIdle(state.device);
         if(x == 0 || y == 0) {
             state.swapchainExtent.width = x;
@@ -848,7 +847,7 @@ namespace kvk {
                                  poolInfo.queue->handle,
                                  poolInfo.queue->submitMutex,
                                  [&](VkCommandBuffer cmd) {
-                                     KVK_PROFILE();
+                                     KAMSKI_PROFILE();
                                      transitionImage(cmd,
                                                      state.depthImage.image,
                                                      VK_IMAGE_LAYOUT_UNDEFINED,
@@ -1150,7 +1149,7 @@ namespace kvk {
 
     ReturnCode PipelineBuilder::build(Pipeline& pipeline,
                                       const VkDevice device) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         if(pipeline.handle != VK_NULL_HANDLE) {
             vkDestroyPipeline(device, pipeline.handle, nullptr);
         }
@@ -1247,7 +1246,7 @@ namespace kvk {
     }
 
     ReturnCode PipelineBuilder::buildCompute(Pipeline& pipeline, const VkDevice device) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         if(pipeline.handle != VK_NULL_HANDLE) {
             vkDestroyPipeline(device, pipeline.handle, nullptr);
         }
@@ -1309,7 +1308,7 @@ namespace kvk {
                             std::uint64_t size,
                             VkBufferUsageFlags bufferUsage,
                             VmaMemoryUsage memoryUsage) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         if(buffer.buffer != VK_NULL_HANDLE) {
             destroyBuffer(buffer, allocator);
         }
@@ -1349,7 +1348,7 @@ namespace kvk {
 
     void destroyBuffer(AllocatedBuffer& buffer,
                        VmaAllocator allocator) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         vmaDestroyBuffer(allocator,
                          buffer.buffer,
                          buffer.allocation);
@@ -1362,7 +1361,7 @@ namespace kvk {
                            const VkImageUsageFlags usageFlags,
                            bool isCubemap,
                            std::uint32_t mipLevels) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         if(image.image != VK_NULL_HANDLE) {
             destroyImage(image, state.device, state.allocator);
         }
@@ -1428,7 +1427,7 @@ namespace kvk {
                            const VkExtent3D extent,
                            const VkImageUsageFlags usage,
                            const std::uint32_t mipLevels) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         const VkImageUsageFlags usageFlags = usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | (mipLevels > 1 ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0);
         const std::uint64_t size = extent.width * extent.height * extent.depth * 4;
         AllocatedBuffer stagingBuffer = {};
@@ -1458,7 +1457,7 @@ namespace kvk {
         }
 
         auto transferFunc = [&](VkCommandBuffer cmd) {
-            KVK_PROFILE();
+            KAMSKI_PROFILE();
             transitionImageMip(cmd,
                                image.image,
                                0, 1,
@@ -1574,7 +1573,7 @@ namespace kvk {
                              const VkFormat format,
                              const VkExtent2D extent,
                              VkImageUsageFlags usage) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         const VkImageUsageFlags usageFlags = usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
         const std::uint64_t size = extent.width * extent.height * 6 * 4;
@@ -1615,7 +1614,7 @@ namespace kvk {
         }
 
         auto transferFunc = [&](VkCommandBuffer cmd) {
-            KVK_PROFILE();
+            KAMSKI_PROFILE();
             transitionImage(cmd,
                             image.image,
                             VK_IMAGE_LAYOUT_UNDEFINED,
@@ -1678,7 +1677,7 @@ namespace kvk {
     void destroyImage(AllocatedImage& image,
                       VkDevice device,
                       VmaAllocator allocator) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         vkDestroyImageView(device,
                            image.view,
                            nullptr);
@@ -1691,7 +1690,7 @@ namespace kvk {
     void DescriptorAllocator::init(VkDevice device,
                                    std::uint32_t initialSets,
                                    std::span<PoolSizeRatio> poolRatios) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         ratios.clear();
         VkDescriptorPool newPool = createPool(device, initialSets, poolRatios);
         setsPerPool = initialSets * 1.5f;
@@ -1699,7 +1698,7 @@ namespace kvk {
     }
 
     VkDescriptorPool DescriptorAllocator::getPool(VkDevice device) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         VkDescriptorPool retval;
 
         if(!readyPools.empty()) {
@@ -1718,7 +1717,7 @@ namespace kvk {
     VkDescriptorPool DescriptorAllocator::createPool(VkDevice device,
                                                         const std::uint32_t setCount,
                                                         const std::span<PoolSizeRatio> poolRatios) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         std::vector<VkDescriptorPoolSize> poolSizes;
         for(const PoolSizeRatio& ratio : poolRatios) {
             poolSizes.push_back(VkDescriptorPoolSize {
@@ -1744,7 +1743,7 @@ namespace kvk {
     }
 
     void DescriptorAllocator::clearPools(VkDevice device) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         for(auto p : readyPools) {
             vkResetDescriptorPool(device,
                                     p,
@@ -1761,7 +1760,7 @@ namespace kvk {
     }
 
     void DescriptorAllocator::destroyPools(VkDevice device) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         for(auto p : readyPools) {
             vkDestroyDescriptorPool(device,
                                     p,
@@ -1781,7 +1780,7 @@ namespace kvk {
                                             VkDevice device,
                                             VkDescriptorSetLayout layout,
                                             void* pNext) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         VkDescriptorPool poolToUse = getPool(device);
 
         VkDescriptorSetAllocateInfo allocInfo = {
@@ -1823,7 +1822,7 @@ namespace kvk {
                                         std::span<VkDescriptorBufferInfo> bufferInfos,
                                        VkDescriptorType type,
                                        std::uint32_t dstArrayElement) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
 
         VkWriteDescriptorSet write = {
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -1849,7 +1848,7 @@ namespace kvk {
                                        const std::uint64_t offset,
                                        VkDescriptorType type,
                                        std::uint32_t dstArrayElement) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         auto& info = bufferInfos.emplace_back(VkDescriptorBufferInfo{
             .buffer = buffer,
             .offset = offset,
@@ -1875,7 +1874,7 @@ namespace kvk {
 
     void DescriptorWriter::writeImages(int binding, std::span<VkDescriptorImageInfo> imageInfos,
                                        VkDescriptorType type, std::uint32_t dstArrayElement) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
 
         VkWriteDescriptorSet write = {
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -1895,7 +1894,7 @@ namespace kvk {
                                       VkImageLayout layout,
                                       VkDescriptorType type,
                                       std::uint32_t dstArrayElement) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         auto& info = imageInfos.emplace_back(VkDescriptorImageInfo{
             .sampler = sampler,
             .imageView = view,
@@ -1930,7 +1929,7 @@ namespace kvk {
     }
 
     void DescriptorWriter::updateSet(VkDevice device, VkDescriptorSet set) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         for(auto& write : writes) {
             write.dstSet = set;
         }
@@ -1943,7 +1942,7 @@ namespace kvk {
     }
 
     FrameData* startFrame(RendererState& state, std::uint32_t& frameIndex) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         frameIndex = state.currentFrame;
         FrameData& frame = state.frames[state.currentFrame];
         VkResult res = vkWaitForFences(state.device,
@@ -1996,7 +1995,7 @@ namespace kvk {
     }
 
     ReturnCode endFrame(RendererState& state, FrameData& frame) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         state.currentFrame = (state.currentFrame + 1) % MAX_IN_FLIGHT_FRAMES;
             
 
@@ -2048,7 +2047,7 @@ namespace kvk {
                           RendererState& state,
                           std::span<std::uint32_t> indices,
                           std::span<std::uint8_t> vertices) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         const std::uint64_t vertexBufferSize = vertices.size();
         const std::uint64_t indexBufferSize = indices.size_bytes();
         mesh.indexCount = indices.size();
@@ -2104,7 +2103,7 @@ namespace kvk {
         vmaUnmapMemory(state.allocator, stagingBuffer.allocation);
 
         auto transferFunc = [&](VkCommandBuffer cmd) {
-            KVK_PROFILE();
+            KAMSKI_PROFILE();
             VkBufferCopy vertexCopy{ 0 };
             vertexCopy.dstOffset = 0;
             vertexCopy.srcOffset = 0;
@@ -2164,7 +2163,7 @@ namespace kvk {
     bool DescriptorSetLayoutBuilder::build(VkDescriptorSetLayout& layout,
                                            VkDevice device,
                                            VkShaderStageFlags stage) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         VkDescriptorSetLayoutBindingFlagsCreateInfo flags = {
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
             .bindingCount = bindingCount,
@@ -2292,7 +2291,7 @@ namespace kvk {
                                                     VkExtent2D extent,
                                                     VkOffset2D offset,
                                                     std::uint32_t layerCount) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         VkRenderingInfo info = {
             .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
             .renderArea = {
@@ -2325,7 +2324,7 @@ namespace kvk {
                            const VkQueueFlags flags,
                            const std::uint32_t queueFamilyIndex,
                            bool hasSecondaryQueue) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         vkGetDeviceQueue(state.device, queueFamilyIndex, 0, &queue.handle);
         logInfo("Queue 0x%llx, flags: %u", (std::uint64_t)queue.handle, flags);
         if(hasSecondaryQueue) {
@@ -2386,7 +2385,7 @@ namespace kvk {
     }
 
     PoolInfo lockCommandPool(RendererState& state, VkQueueFlags desiredQueueFlags) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         //std::uint32_t familyIndex = 0;
         //std::uint32_t bestScore = std::numeric_limits<std::uint32_t>::max();
         //const std::uint32_t maxScore = std::popcount(desiredQueueFlags);
@@ -2428,7 +2427,7 @@ namespace kvk {
     }
 
     void unlockCommandPool(RendererState& state, PoolInfo& poolInfo) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         std::lock_guard lck(poolInfo.queue->poolMutex);
         assert(poolInfo.queue->isSlotOccupied.size() > poolInfo.poolIndex);
         assert(poolInfo.queue->isSlotOccupied[poolInfo.poolIndex]);

@@ -19,7 +19,7 @@ namespace kvk {
 										 VkShaderStageFlags shaderFlags,
 										 std::span<VkDescriptorSetLayoutBinding> bindings,
                                          const VkDescriptorSetLayoutBindingFlagsCreateInfo* flags) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
 		for(auto& binding : bindings) {
 			binding.stageFlags |= shaderFlags;
 		}
@@ -45,7 +45,7 @@ namespace kvk {
 									VkDevice device,
 									VkDescriptorPoolSize* sizes,
 									const std::uint32_t sizeCount) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
 		std::uint32_t maxSets = 0;
 		for(std::uint32_t i = 0; i != sizeCount; i++) {
 			maxSets += sizes[i].descriptorCount;
@@ -72,7 +72,7 @@ namespace kvk {
 									 VkDescriptorPool pool,
 									 VkDevice device,
 									 VkDescriptorSetLayout layout) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
 		VkDescriptorSetAllocateInfo allocInfo = {
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
 			.descriptorPool = pool,
@@ -114,7 +114,7 @@ namespace kvk {
                             const VkPipelineStageFlags2 dstStageMask,
                             const VkAccessFlags2 dstAccessMask,
                             const VkImageAspectFlags aspectMask) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         VkImageMemoryBarrier2 imageBarrier = {
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
             .srcStageMask = srcStageMask,
@@ -167,7 +167,7 @@ namespace kvk {
 									  VkExtent3D extent,
                                       std::uint32_t arrayLayerCount,
                                       std::uint32_t mipLevels) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
         const VkImageType imageType = (extent.depth == 1 ? VK_IMAGE_TYPE_2D : VK_IMAGE_TYPE_3D);
 		return {
 			.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -214,7 +214,7 @@ namespace kvk {
                           VkImageAspectFlags aspect,
                           std::uint32_t srcMipLevel,
                           std::uint32_t dstMipLevel) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
   		VkImageBlit2 blitRegion = {
  			.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2,
 
@@ -259,7 +259,7 @@ namespace kvk {
 							 VkQueue queue,
                              std::mutex& queueMutex,
 							 std::function<void(VkCommandBuffer)>&& function) {
-        KVK_PROFILE();
+        KAMSKI_PROFILE();
 		VkResult retval;
 		VkCommandBufferBeginInfo beginInfo = {
 			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,

@@ -431,6 +431,7 @@ namespace kvk {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
             .pNext = &features12,
             .features = {
+                .independentBlend = VK_TRUE,
                 .fillModeNonSolid = VK_TRUE,
                 .fragmentStoresAndAtomics = VK_TRUE,
                 .shaderInt16 = VK_TRUE,
@@ -462,6 +463,7 @@ namespace kvk {
         CHECK_FEATURE(features11, shaderDrawParameters);
         CHECK_FEATURE(features11, storageBuffer16BitAccess);
         CHECK_FEATURE(features11, uniformAndStorageBuffer16BitAccess);
+        CHECK_FEATURE(allDeviceFeatures.features, independentBlend);
         CHECK_FEATURE(allDeviceFeatures.features, samplerAnisotropy);
         CHECK_FEATURE(allDeviceFeatures.features, multiDrawIndirect);
         CHECK_FEATURE(allDeviceFeatures.features, drawIndirectFirstInstance);
@@ -505,6 +507,7 @@ namespace kvk {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
             .pNext = &features12,
             .features = {
+                .independentBlend = VK_TRUE,
                 .multiDrawIndirect = VK_TRUE,
                 .drawIndirectFirstInstance = VK_TRUE,
                 .fillModeNonSolid = VK_TRUE,
@@ -1194,7 +1197,15 @@ namespace kvk {
         renderInfo.colorAttachmentCount = colorAttachmentFormats.size();
         renderInfo.pColorAttachmentFormats = colorAttachmentFormats.data();
 
-        std::vector<VkPipelineColorBlendAttachmentState> attachments(colorAttachmentFormats.size(), colorBlendAttachment);
+        VkPipelineColorBlendAttachmentState defaultBlendAttachment = {
+            .blendEnable = VK_FALSE,
+            .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+        };
+        std::vector<VkPipelineColorBlendAttachmentState> attachments(colorAttachmentFormats.size(), defaultBlendAttachment);
+        if(colorAttachmentFormats.size() != 0) {
+            attachments[0] = colorBlendAttachment;
+        }
+
         blendState.attachmentCount = attachments.size();
         blendState.pAttachments = attachments.data();
 

@@ -1960,7 +1960,7 @@ namespace kvk {
                         1,
                         &frame.inFlightFence,
                         VK_TRUE,
-                        std::numeric_limits<std::uint64_t>::max());
+                        1000ull * 1000ull * 1000ull);
         if(res != VK_SUCCESS) {
             logInfo("Wait for fence failed %d",res);
             assert(false);

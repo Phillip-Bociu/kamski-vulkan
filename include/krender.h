@@ -1,5 +1,6 @@
 #pragma once
 #include "glm/fwd.hpp"
+#include "krender.h"
 #include "vulkan/vulkan_core.h"
 #include <mutex>
 
@@ -12,7 +13,6 @@
 #endif // KVK_GLFW
 
 #include <cstdint>
-#include <optional>
 #include <vector>
 #include <span>
 #include <deque>
@@ -22,6 +22,8 @@
 #include <vk_mem_alloc.h>
 #include <glm/glm.hpp>
 #include "common.h"
+
+#include <spirv_reflect.h>
 
 #if !defined(KVK_GLFW)
 
@@ -162,7 +164,204 @@ namespace kvk {
         void updateSet(VkDevice device,
                        VkDescriptorSet set);
     };
+
+    struct DescriptorSetLayoutBuilder {
+        DescriptorSetLayoutBuilder();
+        VkDescriptorBindingFlags flagArray[64];
+        VkDescriptorSetLayoutBinding bindings[64];
+        std::uint32_t bindingCount;
+        
+        DescriptorSetLayoutBuilder& addBinding(VkDescriptorType type, std::uint32_t descriptorCount = 1, VkDescriptorBindingFlags flags = 0);
+
+        bool build(VkDescriptorSetLayout& layout,
+                   VkDevice device,
+                   VkShaderStageFlags stage);
+    };
+
     
+    struct Descriptor {
+        union {
+            struct {
+                VkImageView image;
+                VkSampler sampler;
+            } imageSampler;
+            struct {
+                VkImageView image;
+                VkDescriptorType imageType;
+            };
+            struct {
+                VkBuffer buffer;
+                VkDescriptorType bufferType;
+            };
+            VkSampler sampler;
+            u32 lastUploadedImageIndex;
+        };
+
+        enum {
+            IMAGE_SAMPLER,
+            IMAGE,
+            BUFFER,
+            SAMPLER,
+            IMAGES,
+        } type;
+    };
+    
+    struct DescriptorSet {
+        VkDescriptorSet handle = VK_NULL_HANDLE;
+        Descriptor descriptors[64];
+        VkShaderStageFlags shaderStage = 0;
+        std::uint32_t count = 0;
+
+        bool operator==(const kvk::DescriptorSet& other) const noexcept {
+            if(this->shaderStage != other.shaderStage) return false;
+            if(this->count != other.count) return false;
+            for(int i = 0; i != this->count; i++) {
+                if(this->descriptors[i].type != other.descriptors[i].type) return false;
+                switch(this->descriptors[i].type) {
+                    case kvk::Descriptor::IMAGE: {
+                        if(this->descriptors[i].imageType != other.descriptors[i].imageType) return false;
+                    } break;
+
+                    case kvk::Descriptor::BUFFER: {
+                        if(this->descriptors[i].bufferType != other.descriptors[i].bufferType) return false;
+                    } break;
+
+                    default: {
+                    } break;
+                }
+            }
+            return true;
+        }
+
+    };
+
+    struct PipelineLayoutInfo {
+        vector<VkPushConstantRange> pushConstantRanges;
+        vector<VkDescriptorSetLayout> layouts;
+
+        bool operator==(const PipelineLayoutInfo& other) const noexcept {
+            if(this->pushConstantRanges.size() != other.pushConstantRanges.size()) return false;
+            if(this->layouts.size() != other.layouts.size()) return false;
+            
+            for(int i = 0; i != this->pushConstantRanges.size(); i++) {
+                if(memcmp(&this->pushConstantRanges[i], &other.pushConstantRanges[i], sizeof(VkPushConstantRange)) != 0) return false;
+            }
+
+            for(int i = 0; i != this->layouts.size(); i++) {
+                if(this->layouts[i] != other.layouts[i]) return false;
+            }
+
+            return true;
+        }
+
+    };
+}
+
+inline bool operator==(const VkPipelineLayoutCreateInfo& a, const VkPipelineLayoutCreateInfo& b) {
+    if(a.setLayoutCount != b.setLayoutCount) return false;
+    if(a.pushConstantRangeCount != b.pushConstantRangeCount) return false;
+
+    for(int i = 0; i != a.setLayoutCount; i++) {
+        if(a.pSetLayouts[i] != b.pSetLayouts[i]) return false;
+    }
+
+    for(int i = 0; i != a.pushConstantRangeCount; i++) {
+        if(memcmp(&a.pPushConstantRanges[i], &b.pPushConstantRanges[i], sizeof(VkPushConstantRange)) != 0) return false;
+    }
+
+    return true;
+}
+
+namespace std {
+    template<>
+    struct hash<kvk::DescriptorSet> {
+        size_t operator()(const kvk::DescriptorSet& s) const noexcept {
+            size_t retval = std::hash<std::uint32_t>()(s.shaderStage);
+            for(std::uint32_t i = 0; i != s.count; i++) {
+                switch(s.descriptors[i].type) {
+                    case kvk::Descriptor::IMAGE_SAMPLER: {
+                        retval = (retval << 1) ^ std::hash<std::uint32_t>()(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+                    } break;
+
+                    case kvk::Descriptor::IMAGE: {
+                        retval = (retval << 1) ^ std::hash<std::uint32_t>()(s.descriptors[i].imageType);
+                    } break;
+
+                    case kvk::Descriptor::SAMPLER: {
+                        retval = (retval << 1) ^ std::hash<std::uint32_t>()(VK_DESCRIPTOR_TYPE_SAMPLER);
+                    } break;
+
+                    case kvk::Descriptor::BUFFER: {
+                        retval = (retval << 1) ^ std::hash<std::uint32_t>()(s.descriptors[i].bufferType);
+                    } break;
+
+                    case kvk::Descriptor::IMAGES: {
+                        retval = (retval << 1) ^ std::hash<std::uint32_t>()(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
+                        retval = (retval << 1) ^ std::hash<std::uint32_t>()(std::numeric_limits<u16>::max());
+                    } break;
+                }
+            }
+            return retval;
+        }
+    };
+
+    template<>
+    struct hash<kvk::PipelineLayoutInfo> {
+        size_t operator()(const kvk::PipelineLayoutInfo& s) const noexcept {
+            size_t retval = 0;
+            for(int i = 0; i != s.layouts.size(); i++) {
+                retval = (retval << 1) ^ std::hash<void*>()(s.layouts[i]);
+            }
+
+            for(int i = 0; i != s.pushConstantRanges.size(); i++) {
+                retval = (retval << 1) ^ std::hash<std::uint32_t>()(s.pushConstantRanges[i].size);
+                retval = (retval << 1) ^ std::hash<std::uint32_t>()(s.pushConstantRanges[i].offset);
+                retval = (retval << 1) ^ std::hash<std::uint32_t>()(s.pushConstantRanges[i].stageFlags);
+            }
+            return retval;
+        }
+    };
+}
+
+namespace kvk {
+    struct ShaderModule {
+        VkShaderModule module;
+        SpvReflectShaderModule reflection;
+    };
+    struct Cache {
+        std::mutex descriptorMutex;
+        unordered_map<std::string, DescriptorSet> descriptors; 
+
+        std::mutex descriptorLayoutMutex;
+        unordered_map<DescriptorSet, VkDescriptorSetLayout> descriptorLayouts;
+
+        std::mutex pipelineLayoutMutex;
+        unordered_map<kvk::PipelineLayoutInfo, VkPipelineLayout> pipelineLayouts;
+
+        std::mutex shaderModuleMutex;
+        unordered_map<std::string, ShaderModule> shaderModules;
+    };
+    
+    struct DescriptorSetBuilder {
+        Cache& cache;
+        Descriptor descriptors[64];
+        DescriptorWriter writer;
+        std::uint32_t count = 0;
+
+
+        DescriptorSetBuilder(Cache& cache);
+
+        DescriptorSetBuilder& image(VkImageView imageView, VkSampler sampler); // assumed, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+        DescriptorSetBuilder& image(VkImageView imageView, VkDescriptorType type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
+        DescriptorSetBuilder& images(std::span<VkImageView> imageViews, u32 offset); // assumed, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+
+        DescriptorSetBuilder& buffer(VkBuffer buffer, u64 size, u64 offset, VkDescriptorType type);
+        DescriptorSetBuilder& sampler(VkSampler sampler);
+        
+        DescriptorSet& build(VkDevice device, std::string_view name, VkShaderStageFlags shaderStage, DescriptorAllocator& allocator);
+    };
+    
+
     struct RenderPass {
         VkCommandBuffer cmd;
         ~RenderPass();
@@ -210,27 +409,10 @@ namespace kvk {
                                                    std::uint32_t layerCount = 1);
     };
 
-    struct DescriptorSetLayoutBuilder {
-        DescriptorSetLayoutBuilder();
-        VkDescriptorBindingFlags flagArray[64];
-        VkDescriptorSetLayoutBinding bindings[64];
-        std::uint32_t bindingCount;
-        
-        DescriptorSetLayoutBuilder& addBinding(VkDescriptorType type, std::uint32_t descriptorCount = 1, VkDescriptorBindingFlags flags = 0);
-
-        bool build(VkDescriptorSetLayout& layout,
-                   VkDevice device,
-                   VkShaderStageFlags stage);
-    };
-
     struct PipelineBuilder {
         PipelineBuilder();
 
         std::vector<VkDynamicState> dynamicState;
-        std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
-        std::vector<VkPushConstantRange> pushConstantRanges;
-        std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
-        std::optional<VkPipelineLayout> prebuiltLayout;
         std::vector<VkVertexInputAttributeDescription> vertexInputAttributes;
         std::uint32_t vertexInputAttributesSize;
 
@@ -242,12 +424,12 @@ namespace kvk {
             SHADER_STAGE_COUNT
         };
 
+        std::string_view shaderNames[SHADER_STAGE_COUNT];
         std::vector<VkSpecializationMapEntry> specializationConstants[SHADER_STAGE_COUNT];
         std::vector<std::uint8_t> specializationConstantData[SHADER_STAGE_COUNT];
 
         std::vector<VkFormat> colorAttachmentFormats;
         VkPipeline basePipeline;
-        VkPipelineCache cache;
         bool allowDerivatives;
 
         VkPipelineLayoutCreateInfo layoutCreateInfo;
@@ -262,18 +444,16 @@ namespace kvk {
         VkPipelineRenderingCreateInfo renderInfo;
         VkPipelineRasterizationStateCreateInfo rasterizer;
 
-        PipelineBuilder& setShader(VkShaderModule computeShader);
-        PipelineBuilder& setShaders(VkShaderModule vertexShader, VkShaderModule fragmentShader);
+        PipelineBuilder& addShaders(std::string_view name, VkShaderStageFlags stageFlags);
+        PipelineBuilder& clearShaders(VkShaderStageFlags stageFlags = VK_SHADER_STAGE_ALL);
         PipelineBuilder& setInputTopology(VkPrimitiveTopology topology);
         PipelineBuilder& setPolygonMode(VkPolygonMode poly);
         PipelineBuilder& setCullMode(VkCullModeFlags cullMode, VkFrontFace face);
         PipelineBuilder& addColorAttachmentFormat(VkFormat format, std::uint32_t count = 1);
         PipelineBuilder& setDepthAttachmentFormat(VkFormat format);
         PipelineBuilder& setStencilAttachmentFormat(VkFormat format);
-        PipelineBuilder& setPrebuiltLayout(VkPipelineLayout layout = VK_NULL_HANDLE);
         PipelineBuilder& setBasePipeline(VkPipeline pipeline);
         PipelineBuilder& setAllowDerivatives(bool allow);
-        PipelineBuilder& setPipelineCache(VkPipelineCache cache);
 
         PipelineBuilder& enableDepthTest(bool depthWriteEnable, VkCompareOp op);
         PipelineBuilder& enableStencilTest(VkCompareOp compareOp, bool enableWriting);
@@ -285,11 +465,6 @@ namespace kvk {
         PipelineBuilder& addVertexInputAttribute(VkFormat format,
                                                  std::uint32_t offset,
                                                  std::uint32_t size);
-
-        PipelineBuilder& addPushConstantRange(VkShaderStageFlags stage,
-                                              std::uint32_t size,
-                                              std::uint32_t offset = 0);
-        PipelineBuilder& addDescriptorSetLayout(VkDescriptorSetLayout layout);
 
         PipelineBuilder& clearSpecializationConstants(const ShaderStage shaderStage = SHADER_STAGE_COUNT);
         PipelineBuilder& addSpecializationConstantData(const void* data, const std::uint64_t size, std::uint32_t constantId, const ShaderStage shaderStage);
@@ -307,9 +482,11 @@ namespace kvk {
         }
 
         ReturnCode build(Pipeline& pipeline,
-                         const VkDevice device);
+                         Cache& cache,
+                         VkDevice device);
         ReturnCode buildCompute(Pipeline& pipeline,
-                                const VkDevice device);
+                                Cache& cache,
+                                VkDevice device);
     };
 
     struct Mesh {
@@ -317,19 +494,6 @@ namespace kvk {
         AllocatedBuffer vertices;
         VkDeviceAddress vertexBufferAddress;
         std::uint32_t indexCount;
-    };
-
-    enum MaterialPass {
-        MAT_OPAQUE,
-        MAT_SHADOW,
-        MAT_TRANSPARENT,
-        MAT_COUNT
-    };
-
-    struct MaterialInstance {
-        Pipeline* pipeline;
-        VkDescriptorSet materialSet;
-        MaterialPass pass;
     };
 
     union CubemapContents {
@@ -342,16 +506,6 @@ namespace kvk {
             const void* front;
         };
         const char* imageContents[6];
-    };
-
-    struct RenderObject {
-        MaterialInstance* materialInstance;
-        VkBuffer indexBuffer;
-        VkDeviceAddress vertexBufferAddress;
-
-        glm::mat4 transform;
-        std::uint32_t indexCount;
-        std::uint32_t firstIndex;
     };
 
     struct Queue {
@@ -388,7 +542,7 @@ namespace kvk {
     };
 
 
-    static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 1;
+    static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 3;
     struct RendererState {
         std::uint32_t currentFrame;
 
@@ -432,8 +586,8 @@ namespace kvk {
 
     ReturnCode init(RendererState& state, const InitSettings* settings);
 
-    ReturnCode createShaderModuleFromFile(VkShaderModule& shaderModule, RendererState& state, const char* shaderPath);
-    ReturnCode createShaderModuleFromMemory(VkShaderModule& shaderModule, RendererState& state, const std::uint32_t* shaderContents, const std::uint64_t shaderSize);
+    ReturnCode createShaderModuleFromFile(VkShaderModule& shaderModule, VkDevice device, const char* shaderPath);
+    ReturnCode createShaderModuleFromMemory(VkShaderModule& shaderModule, VkDevice device, const std::uint32_t* shaderContents, const std::uint64_t shaderSize);
 
     FrameData* startFrame(RendererState& state, std::uint32_t& frameIndex);
 

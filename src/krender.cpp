@@ -2479,38 +2479,38 @@ namespace kvk {
         return layout;
     }
 
-    DescriptorSet& DescriptorSetBuilder::build(VkDevice device, std::string_view name, VkShaderStageFlags shaderStage, DescriptorAllocator& allocator) {
-        std::lock_guard lck(cache.descriptorMutex);
-        DescriptorSet& retval = cache.descriptors[std::string(name.begin(), name.end())];
-        
-        if(retval.handle == VK_NULL_HANDLE) {
-            memcpy(retval.descriptors, descriptors, sizeof(descriptors[0]) * count);
-            retval.count = count;
-            VkDescriptorSetLayout layout = descriptorSetLayoutFromCache(cache, retval, device);
-            ReturnCode rc = allocator.alloc(retval.handle, device, layout);
+    void DescriptorSetBuilder::buildInternal(DescriptorSet& set) {
+        const VkDevice device = cache.state->device;
+        DescriptorAllocator& allocator = cache.state->descriptors;
+
+        if(set.handle == VK_NULL_HANDLE) {
+            memcpy(set.descriptors, descriptors, sizeof(descriptors[0]) * count);
+            set.count = count;
+            VkDescriptorSetLayout layout = descriptorSetLayoutFromCache(cache, set, device);
+            ReturnCode rc = allocator.alloc(set.handle, device, layout);
             assert(rc == ReturnCode::OK);
         } else {
-            assert(count == retval.count);
+            assert(count == set.count);
 
             for(u32 i = 0; i != count; i++) {
-                assert(descriptors[i].type == retval.descriptors[i].type);
+                assert(descriptors[i].type == set.descriptors[i].type);
                 bool shouldRemove = false;
                 switch(descriptors[i].type) {
                     case kvk::Descriptor::IMAGE_SAMPLER: {
-                        shouldRemove = descriptors[i].imageSampler.image == retval.descriptors[i].imageSampler.image && 
-                           descriptors[i].imageSampler.sampler == retval.descriptors[i].imageSampler.sampler;
+                        shouldRemove = descriptors[i].imageSampler.image == set.descriptors[i].imageSampler.image && 
+                           descriptors[i].imageSampler.sampler == set.descriptors[i].imageSampler.sampler;
                     } break;
 
                     case kvk::Descriptor::IMAGE: {
-                        shouldRemove = descriptors[i].image == retval.descriptors[i].image;
+                        shouldRemove = descriptors[i].image == set.descriptors[i].image;
                     } break;
 
                     case kvk::Descriptor::SAMPLER: {
-                        shouldRemove = descriptors[i].sampler == retval.descriptors[i].sampler;
+                        shouldRemove = descriptors[i].sampler == set.descriptors[i].sampler;
                     } break;
 
                     case kvk::Descriptor::BUFFER: {
-                        shouldRemove = descriptors[i].buffer == retval.descriptors[i].buffer;
+                        shouldRemove = descriptors[i].buffer == set.descriptors[i].buffer;
                     } break;
 
                     case kvk::Descriptor::IMAGES: {
@@ -2527,13 +2527,27 @@ namespace kvk {
                 }
             }
             
-            memcpy(retval.descriptors, descriptors, sizeof(descriptors[0]) * count);
-            retval.count = count;
+            memcpy(set.descriptors, descriptors, sizeof(descriptors[0]) * count);
+            set.count = count;
         }
         if(writer.bindingCount != 0) {
-            writer.updateSet(device, retval.handle);
+            writer.updateSet(device, set.handle);
         }
+    }
 
+    DescriptorSet& DescriptorSetBuilder::build(std::string_view name, VkShaderStageFlags shaderStage) {
+        std::lock_guard lck(cache.descriptorMutex);
+        DescriptorSet& retval = cache.descriptors[std::string(name.begin(), name.end())];
+        buildInternal(retval);
+        return retval;
+    }
+
+    DescriptorSet& DescriptorSetBuilder::buildPerFrame(std::string_view name, VkShaderStageFlags shaderStage) {
+        std::lock_guard lck(cache.perFrameDescriptorMutex);
+        const u32 frameIndex = cache.state->currentFrame;
+
+        DescriptorSet& retval = cache.perFrameDescriptors[std::string(name.begin(), name.end())][frameIndex];
+        buildInternal(retval);
         return retval;
     }
 

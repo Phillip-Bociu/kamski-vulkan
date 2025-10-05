@@ -47,6 +47,7 @@
     }while(0)
 
 namespace kvk {
+    static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 3;
 
     struct InitSettings {
         const char* appName;
@@ -170,7 +171,7 @@ namespace kvk {
         VkDescriptorBindingFlags flagArray[64];
         VkDescriptorSetLayoutBinding bindings[64];
         std::uint32_t bindingCount;
-        
+
         DescriptorSetLayoutBuilder& addBinding(VkDescriptorType type, std::uint32_t descriptorCount = 1, VkDescriptorBindingFlags flags = 0);
 
         bool build(VkDescriptorSetLayout& layout,
@@ -178,7 +179,7 @@ namespace kvk {
                    VkShaderStageFlags stage);
     };
 
-    
+
     struct Descriptor {
         union {
             struct {
@@ -205,7 +206,7 @@ namespace kvk {
             IMAGES,
         } type;
     };
-    
+
     struct DescriptorSet {
         VkDescriptorSet handle = VK_NULL_HANDLE;
         Descriptor descriptors[64];
@@ -242,7 +243,7 @@ namespace kvk {
         bool operator==(const PipelineLayoutInfo& other) const noexcept {
             if(this->pushConstantRanges.size() != other.pushConstantRanges.size()) return false;
             if(this->layouts.size() != other.layouts.size()) return false;
-            
+
             for(int i = 0; i != this->pushConstantRanges.size(); i++) {
                 if(memcmp(&this->pushConstantRanges[i], &other.pushConstantRanges[i], sizeof(VkPushConstantRange)) != 0) return false;
             }
@@ -255,26 +256,23 @@ namespace kvk {
         }
 
     };
-}
 
-inline bool operator==(const VkPipelineLayoutCreateInfo& a, const VkPipelineLayoutCreateInfo& b) {
-    if(a.setLayoutCount != b.setLayoutCount) return false;
-    if(a.pushConstantRangeCount != b.pushConstantRangeCount) return false;
+    inline bool operator==(const VkPipelineLayoutCreateInfo& a, const VkPipelineLayoutCreateInfo& b) {
+        if(a.setLayoutCount != b.setLayoutCount) return false;
+        if(a.pushConstantRangeCount != b.pushConstantRangeCount) return false;
 
-    for(int i = 0; i != a.setLayoutCount; i++) {
-        if(a.pSetLayouts[i] != b.pSetLayouts[i]) return false;
+        for(int i = 0; i != a.setLayoutCount; i++) {
+            if(a.pSetLayouts[i] != b.pSetLayouts[i]) return false;
+        }
+
+        for(int i = 0; i != a.pushConstantRangeCount; i++) {
+            if(memcmp(&a.pPushConstantRanges[i], &b.pPushConstantRanges[i], sizeof(VkPushConstantRange)) != 0) return false;
+        }
+
+        return true;
     }
 
-    for(int i = 0; i != a.pushConstantRangeCount; i++) {
-        if(memcmp(&a.pPushConstantRanges[i], &b.pPushConstantRanges[i], sizeof(VkPushConstantRange)) != 0) return false;
-    }
-
-    return true;
-}
-
-namespace std {
-    template<>
-    struct hash<kvk::DescriptorSet> {
+    struct DescriptorSetLayoutHash {
         size_t operator()(const kvk::DescriptorSet& s) const noexcept {
             size_t retval = std::hash<std::uint32_t>()(s.shaderStage);
             for(std::uint32_t i = 0; i != s.count; i++) {
@@ -305,8 +303,7 @@ namespace std {
         }
     };
 
-    template<>
-    struct hash<kvk::PipelineLayoutInfo> {
+    struct PipelineLayoutHash {
         size_t operator()(const kvk::PipelineLayoutInfo& s) const noexcept {
             size_t retval = 0;
             for(int i = 0; i != s.layouts.size(); i++) {
@@ -321,27 +318,31 @@ namespace std {
             return retval;
         }
     };
-}
 
-namespace kvk {
     struct ShaderModule {
         VkShaderModule module;
         SpvReflectShaderModule reflection;
     };
+
     struct Cache {
+        struct RendererState* state;
+
         std::mutex descriptorMutex;
         unordered_map<std::string, DescriptorSet> descriptors; 
 
+        std::mutex perFrameDescriptorMutex;
+        unordered_map<std::string, DescriptorSet[MAX_IN_FLIGHT_FRAMES]> perFrameDescriptors; 
+
         std::mutex descriptorLayoutMutex;
-        unordered_map<DescriptorSet, VkDescriptorSetLayout> descriptorLayouts;
+        unordered_map<DescriptorSet, VkDescriptorSetLayout, DescriptorSetLayoutHash> descriptorLayouts;
 
         std::mutex pipelineLayoutMutex;
-        unordered_map<kvk::PipelineLayoutInfo, VkPipelineLayout> pipelineLayouts;
+        unordered_map<kvk::PipelineLayoutInfo, VkPipelineLayout, PipelineLayoutHash> pipelineLayouts;
 
         std::mutex shaderModuleMutex;
         unordered_map<std::string, ShaderModule> shaderModules;
     };
-    
+
     struct DescriptorSetBuilder {
         Cache& cache;
         Descriptor descriptors[64];
@@ -358,7 +359,10 @@ namespace kvk {
         DescriptorSetBuilder& buffer(VkBuffer buffer, u64 size, u64 offset, VkDescriptorType type);
         DescriptorSetBuilder& sampler(VkSampler sampler);
         
-        DescriptorSet& build(VkDevice device, std::string_view name, VkShaderStageFlags shaderStage, DescriptorAllocator& allocator);
+        DescriptorSet&         build(std::string_view name, VkShaderStageFlags shaderStage);
+        DescriptorSet& buildPerFrame(std::string_view name, VkShaderStageFlags shaderStage);
+
+        void buildInternal(DescriptorSet& set);
     };
     
 
@@ -542,7 +546,6 @@ namespace kvk {
     };
 
 
-    static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 3;
     struct RendererState {
         std::uint32_t currentFrame;
 

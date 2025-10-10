@@ -1,6 +1,5 @@
 #pragma once
 #include "glm/fwd.hpp"
-#include "krender.h"
 #include "vulkan/vulkan_core.h"
 #include <mutex>
 

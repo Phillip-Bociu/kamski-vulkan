@@ -2687,7 +2687,9 @@ namespace kvk {
     }
 
     RenderPass::~RenderPass() {
-        vkCmdEndRendering(cmd);
+        if(cmd != VK_NULL_HANDLE) {
+            vkCmdEndRendering(cmd);
+        }
     }
 
     ReturnCode createQueue(Queue& queue,

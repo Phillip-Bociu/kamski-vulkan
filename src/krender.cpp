@@ -870,6 +870,10 @@ namespace kvk {
         return rc;
     }
 
+    void Pipeline::bind(VkCommandBuffer cmd) { 
+        vkCmdBindPipeline(cmd, bindPoint, handle);
+    }
+    
     PipelineBuilder::PipelineBuilder() {
         vertexInputAttributesSize = 0;
         multisample = {
@@ -1409,6 +1413,8 @@ namespace kvk {
             logError("Could not create graphics pipeline");
             return ReturnCode::UNKNOWN;
         }
+
+        pipeline.bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
         return ReturnCode::OK;
     }
 
@@ -1509,6 +1515,7 @@ namespace kvk {
             return ReturnCode::UNKNOWN;
         }
 
+        pipeline.bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
         return ReturnCode::OK;
     }
 
@@ -1539,7 +1546,7 @@ namespace kvk {
                            &allocInfo,
                            &buffer.buffer,
                            &buffer.allocation,
-                           &buffer.info) != VK_SUCCESS) {
+                           nullptr) != VK_SUCCESS) {
             logError("Could not allocate buffer");
             return ReturnCode::UNKNOWN;
         }
@@ -1552,6 +1559,9 @@ namespace kvk {
         } else {
             buffer.address = 0;
         }
+
+        buffer.usage = bufferUsage;
+        buffer.size = size;
 
         return ReturnCode::OK;
     }
@@ -1627,6 +1637,7 @@ namespace kvk {
         }
         image.format = format;
         image.extent = extent;
+        image.usage = usageFlags;
         return ReturnCode::OK;
     }
 
@@ -2155,14 +2166,17 @@ namespace kvk {
         KAMSKI_PROFILE();
         frameIndex = state.currentFrame;
         FrameData& frame = state.frames[state.currentFrame];
-        VkResult res = vkWaitForFences(state.device,
-                        1,
-                        &frame.inFlightFence,
-                        VK_TRUE,
-                        1000ull * 1000ull * 1000ull);
-        if(res != VK_SUCCESS) {
-            logInfo("Wait for fence failed %d",res);
-            assert(false);
+        {
+            KAMSKI_PROFILE_NAMED("WaitForFences");
+            VkResult res = vkWaitForFences(state.device,
+                                           1,
+                                           &frame.inFlightFence,
+                                           VK_TRUE,
+                                           1000ull * 1000ull * 1000ull);
+            if(res != VK_SUCCESS) {
+                logInfo("Wait for fence failed %d",res);
+                assert(false);
+            }
         }
         std::uint32_t imageIndex;
 
@@ -2398,7 +2412,7 @@ namespace kvk {
         descriptors[count].imageSampler = {view, sampler};
         descriptors[count].type = Descriptor::IMAGE_SAMPLER;
         count++;
-        writer.writeImage(view, sampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        writer.writeImage(view, sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
         return *this;
     }
@@ -2407,17 +2421,23 @@ namespace kvk {
         descriptors[count].image = view;
         descriptors[count].imageType = type;
         count++;
-        writer.writeImage(view, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, type);
+        VkImageLayout layout;
+        if(type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE) {
+            layout = VK_IMAGE_LAYOUT_GENERAL;
+        } else {
+            layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        }
+        writer.writeImage(view, VK_NULL_HANDLE, layout, type);
         return *this;
     }
 
-    DescriptorSetBuilder& DescriptorSetBuilder::images(std::span<VkImageView> views, u32 offset) {
-        descriptors[count].lastUploadedImageIndex = offset + views.size();
+    DescriptorSetBuilder& DescriptorSetBuilder::images(std::span<kvk::AllocatedImage> images, u32 offset) {
+        descriptors[count].lastUploadedImageIndex = offset + images.size();
 
-        vector<VkDescriptorImageInfo> imageInfos(views.size());
-        for(u32 i = 0; i != views.size(); i++) {
-            imageInfos[i].imageView = views[i];
-            imageInfos[i].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+        vector<VkDescriptorImageInfo> imageInfos(images.size());
+        for(u32 i = 0; i != images.size(); i++) {
+            imageInfos[i].imageView = images[i].view;
+            imageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         }
         writer.writeImages(imageInfos, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, offset);
         count++;
@@ -2425,7 +2445,7 @@ namespace kvk {
         return *this;
     }
 
-    DescriptorSetBuilder& DescriptorSetBuilder::buffer(VkBuffer buffer, u64 size, u64 offset, VkDescriptorType type) {
+    DescriptorSetBuilder& DescriptorSetBuilder::buffer(VkBuffer buffer, VkDescriptorType type, u64 size, u64 offset) {
         descriptors[count].buffer = buffer;
         descriptors[count].bufferType = type;
         count++;
@@ -2486,8 +2506,20 @@ namespace kvk {
         if(set.handle == VK_NULL_HANDLE) {
             memcpy(set.descriptors, descriptors, sizeof(descriptors[0]) * count);
             set.count = count;
+
             VkDescriptorSetLayout layout = descriptorSetLayoutFromCache(cache, set, device);
-            ReturnCode rc = allocator.alloc(set.handle, device, layout);
+            ReturnCode rc;
+            if(descriptors[count - 1].type == Descriptor::IMAGES) {
+                const u32 descriptorCount = std::numeric_limits<u16>::max();
+                VkDescriptorSetVariableDescriptorCountAllocateInfo setAllocateCountInfo = {
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO,
+                    .descriptorSetCount = 1,
+                    .pDescriptorCounts = &descriptorCount,
+                };
+                rc = allocator.alloc(set.handle, device, layout, &setAllocateCountInfo);
+            } else {
+                rc = allocator.alloc(set.handle, device, layout);
+            }
             assert(rc == ReturnCode::OK);
         } else {
             assert(count == set.count);

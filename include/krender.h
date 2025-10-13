@@ -65,6 +65,22 @@ namespace kvk {
     struct Pipeline {
         VkPipelineLayout layout;
         VkPipeline handle;
+        VkPipelineBindPoint bindPoint;
+
+        void bind(VkCommandBuffer cmd);
+        template<typename T>
+        void pushConstants(VkCommandBuffer cmd, const T& constants, VkShaderStageFlags shaderStage = 0, u32 offset = 0) {
+            if(shaderStage == 0) {
+                if(bindPoint == VK_PIPELINE_BIND_POINT_COMPUTE) shaderStage = VK_SHADER_STAGE_COMPUTE_BIT;
+                else if(bindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS) shaderStage = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+            }
+            vkCmdPushConstants(cmd,
+                               layout,
+                               shaderStage,
+                               offset,
+                               sizeof(T),
+                               &constants);
+        }
     };
 
     struct AllocatedImage {
@@ -73,13 +89,17 @@ namespace kvk {
         VmaAllocation allocation;
         VkExtent3D extent;
         VkFormat format;
+        VkImageUsageFlags usage;
+        u8 mipCount;
+        u8 layerCount;
     };
 
     struct AllocatedBuffer {
         VkBuffer buffer = VK_NULL_HANDLE;
         VmaAllocation allocation;
-        VmaAllocationInfo info;
         VkDeviceAddress address;
+        VkBufferUsageFlags usage;
+        VkDeviceSize size;
     };
 
     struct DescriptorAllocator {
@@ -235,6 +255,7 @@ namespace kvk {
 
     };
 
+
     struct PipelineLayoutInfo {
         vector<VkPushConstantRange> pushConstantRanges;
         vector<VkDescriptorSetLayout> layouts;
@@ -326,6 +347,9 @@ namespace kvk {
     struct Cache {
         struct RendererState* state;
 
+        std::mutex pipelineMutex;
+        unordered_map<std::string, Pipeline> pipelines; 
+
         std::mutex descriptorMutex;
         unordered_map<std::string, DescriptorSet> descriptors; 
 
@@ -348,14 +372,13 @@ namespace kvk {
         DescriptorWriter writer;
         std::uint32_t count = 0;
 
-
         DescriptorSetBuilder(Cache& cache);
 
-        DescriptorSetBuilder& image(VkImageView imageView, VkSampler sampler); // assumed, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
-        DescriptorSetBuilder& image(VkImageView imageView, VkDescriptorType type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
-        DescriptorSetBuilder& images(std::span<VkImageView> imageViews, u32 offset); // assumed, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+        DescriptorSetBuilder& image(VkImageView imageView, VkSampler sampler, VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL); // assumed, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+        DescriptorSetBuilder& image(VkImageView imageView, VkDescriptorType type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        DescriptorSetBuilder& images(std::span<AllocatedImage> images, u32 offset, VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL); // assumed, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
 
-        DescriptorSetBuilder& buffer(VkBuffer buffer, u64 size, u64 offset, VkDescriptorType type);
+        DescriptorSetBuilder& buffer(VkBuffer buffer, VkDescriptorType type, u64 size = VK_WHOLE_SIZE, u64 offset = 0);
         DescriptorSetBuilder& sampler(VkSampler sampler);
         
         DescriptorSet&         build(std::string_view name, VkShaderStageFlags shaderStage);
@@ -657,4 +680,38 @@ namespace kvk {
 
     PoolInfo lockCommandPool(RendererState& state, VkQueueFlags desiredQueueFlags = VK_QUEUE_GRAPHICS_BIT);
     void unlockCommandPool(RendererState& state, PoolInfo& poolInfo);
+
+    template<typename ... Sets>
+        void bindDescriptorSets(VkCommandBuffer commandBuffer,
+                                kvk::Pipeline& pipeline,
+                                VkDescriptorSet* setArray,
+                                const u32 setCount,
+                                const DescriptorSet& set,
+                                Sets&& ... sets) {
+        if constexpr(sizeof...(sets) == 0) {
+            setArray[setCount] = set.handle;
+            vkCmdBindDescriptorSets(commandBuffer,
+                                    pipeline.bindPoint,
+                                    pipeline.layout,
+                                    0,
+                                    setCount + 1,
+                                    setArray,
+                                    0,
+                                    nullptr);
+        } else {
+            setArray[setCount] = set.handle;
+            bindDescriptorSets(commandBuffer, pipeline, setArray, setCount + 1, std::forward<Sets>(sets)...);
+        }
+    }
+
+    template<typename ... Sets>
+    void bindDescriptorSets(VkCommandBuffer commandBuffer, kvk::Pipeline& pipeline, Sets&& ... sets) {
+        VkDescriptorSet setArray[sizeof...(sets)];
+        bindDescriptorSets(commandBuffer,
+                           pipeline,
+                           setArray,
+                           0,
+                           std::forward<Sets>(sets)...);
+    }
+
 }

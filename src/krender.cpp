@@ -2406,38 +2406,39 @@ namespace kvk {
 
     DescriptorSetBuilder::DescriptorSetBuilder(Cache& cache):cache(cache) {}
 
-    DescriptorSetBuilder& DescriptorSetBuilder::image(VkImageView view, VkSampler sampler) {
+    DescriptorSetBuilder& DescriptorSetBuilder::image(VkImageView view, VkSampler sampler, VkImageLayout layout) {
         assert(sampler != VK_NULL_HANDLE);
 
         descriptors[count].imageSampler = {view, sampler};
         descriptors[count].type = Descriptor::IMAGE_SAMPLER;
         count++;
-        writer.writeImage(view, sampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        writer.writeImage(view, sampler, layout, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
         return *this;
     }
 
-    DescriptorSetBuilder& DescriptorSetBuilder::image(VkImageView view, VkDescriptorType type) {
+    DescriptorSetBuilder& DescriptorSetBuilder::image(VkImageView view, VkDescriptorType type, VkImageLayout layout) {
         descriptors[count].image = view;
         descriptors[count].imageType = type;
         count++;
-        VkImageLayout layout;
-        if(type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE) {
-            layout = VK_IMAGE_LAYOUT_GENERAL;
-        } else {
-            layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        if(layout == 0) {
+            if(type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE) {
+                layout = VK_IMAGE_LAYOUT_GENERAL;
+            } else {
+                layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            }
         }
         writer.writeImage(view, VK_NULL_HANDLE, layout, type);
         return *this;
     }
 
-    DescriptorSetBuilder& DescriptorSetBuilder::images(std::span<kvk::AllocatedImage> images, u32 offset) {
-        descriptors[count].lastUploadedImageIndex = offset + images.size();
+    DescriptorSetBuilder& DescriptorSetBuilder::images(std::span<kvk::AllocatedImage> imagesToUpload, u32 offset, VkImageLayout layout) {
+        descriptors[count].lastUploadedImageIndex = offset + imagesToUpload.size();
 
-        vector<VkDescriptorImageInfo> imageInfos(images.size());
-        for(u32 i = 0; i != images.size(); i++) {
-            imageInfos[i].imageView = images[i].view;
-            imageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        vector<VkDescriptorImageInfo> imageInfos(imagesToUpload.size());
+        for(u32 i = 0; i != imagesToUpload.size(); i++) {
+            imageInfos[i].imageView = imagesToUpload[i].view;
+            imageInfos[i].imageLayout = layout;
         }
         writer.writeImages(imageInfos, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, offset);
         count++;

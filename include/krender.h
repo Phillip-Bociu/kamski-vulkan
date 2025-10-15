@@ -375,8 +375,8 @@ namespace kvk {
         DescriptorSetBuilder(Cache& cache);
 
         DescriptorSetBuilder& image(VkImageView imageView, VkSampler sampler, VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL); // assumed, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
-        DescriptorSetBuilder& image(VkImageView imageView, VkDescriptorType type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        DescriptorSetBuilder& images(std::span<AllocatedImage> images, u32 offset, VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL); // assumed, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+        DescriptorSetBuilder& image(VkImageView imageView, VkDescriptorType type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VkImageLayout layout = VkImageLayout(0));
+        DescriptorSetBuilder& images(std::span<AllocatedImage> imagesToUpload, u32 offset, VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL); // assumed, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
 
         DescriptorSetBuilder& buffer(VkBuffer buffer, VkDescriptorType type, u64 size = VK_WHOLE_SIZE, u64 offset = 0);
         DescriptorSetBuilder& sampler(VkSampler sampler);
@@ -682,7 +682,7 @@ namespace kvk {
     void unlockCommandPool(RendererState& state, PoolInfo& poolInfo);
 
     template<typename ... Sets>
-        void bindDescriptorSets(VkCommandBuffer commandBuffer,
+        void bindDescriptorSetsInternal(VkCommandBuffer commandBuffer,
                                 kvk::Pipeline& pipeline,
                                 VkDescriptorSet* setArray,
                                 const u32 setCount,
@@ -700,18 +700,18 @@ namespace kvk {
                                     nullptr);
         } else {
             setArray[setCount] = set.handle;
-            bindDescriptorSets(commandBuffer, pipeline, setArray, setCount + 1, std::forward<Sets>(sets)...);
+            bindDescriptorSetsInternal(commandBuffer, pipeline, setArray, setCount + 1, std::forward<Sets>(sets)...);
         }
     }
 
     template<typename ... Sets>
     void bindDescriptorSets(VkCommandBuffer commandBuffer, kvk::Pipeline& pipeline, Sets&& ... sets) {
         VkDescriptorSet setArray[sizeof...(sets)];
-        bindDescriptorSets(commandBuffer,
-                           pipeline,
-                           setArray,
-                           0,
-                           std::forward<Sets>(sets)...);
+        bindDescriptorSetsInternal(commandBuffer,
+                                   pipeline,
+                                   setArray,
+                                   0,
+                                   std::forward<Sets>(sets)...);
     }
 
 }

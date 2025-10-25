@@ -137,6 +137,7 @@ namespace kvk {
     struct DescriptorWriter {
         std::deque<VkDescriptorImageInfo> imageInfos;
         std::deque<VkDescriptorBufferInfo> bufferInfos;
+
         std::vector<VkWriteDescriptorSet> writes;
         int bindingCount;
 
@@ -192,6 +193,7 @@ namespace kvk {
         std::uint32_t bindingCount;
 
         DescriptorSetLayoutBuilder& addBinding(VkDescriptorType type, std::uint32_t descriptorCount = 1, VkDescriptorBindingFlags flags = 0);
+        DescriptorSetLayoutBuilder& addBinding(u32 binding, VkDescriptorType type, std::uint32_t descriptorCount = 1, VkDescriptorBindingFlags flags = 0);
 
         bool build(VkDescriptorSetLayout& layout,
                    VkDevice device,
@@ -218,12 +220,14 @@ namespace kvk {
         };
 
         enum {
+            NONE,
+
             IMAGE_SAMPLER,
             IMAGE,
             BUFFER,
             SAMPLER,
             IMAGES,
-        } type;
+        } type = NONE;
     };
 
     struct DescriptorSet {
@@ -317,6 +321,9 @@ namespace kvk {
                         retval = (retval << 1) ^ std::hash<std::uint32_t>()(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
                         retval = (retval << 1) ^ std::hash<std::uint32_t>()(std::numeric_limits<u16>::max());
                     } break;
+
+                    case kvk::Descriptor::NONE: {
+                    } break;
                 }
             }
             return retval;
@@ -371,6 +378,9 @@ namespace kvk {
         Descriptor descriptors[64];
         DescriptorWriter writer;
         std::uint32_t count = 0;
+        // used for image descriptor indexing
+        std::vector<VkDescriptorImageInfo> imageInfoVector;
+
 
         DescriptorSetBuilder(Cache& cache);
 
@@ -384,14 +394,9 @@ namespace kvk {
         DescriptorSet&         build(std::string_view name, VkShaderStageFlags shaderStage);
         DescriptorSet& buildPerFrame(std::string_view name, VkShaderStageFlags shaderStage);
 
-        void buildInternal(DescriptorSet& set);
+        void buildInternal(std::string_view name, DescriptorSet& set);
     };
     
-
-    struct RenderPass {
-        VkCommandBuffer cmd;
-        ~RenderPass();
-    };
 
     struct RenderPassBuilder {
         private:
@@ -429,10 +434,10 @@ namespace kvk {
                                                 VkAttachmentStoreOp storeOp = VK_ATTACHMENT_STORE_OP_STORE,
                                                 VkImageLayout imageLayout = VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL);
 
-        [[nodiscard]] RenderPass cmdBeginRendering(VkCommandBuffer cmd,
-                                                   VkExtent2D extent,
-                                                   VkOffset2D offset = {0, 0},
-                                                   std::uint32_t layerCount = 1);
+        void cmdBeginRendering(VkCommandBuffer cmd,
+                               VkExtent2D extent,
+                               VkOffset2D offset = {0, 0},
+                               std::uint32_t layerCount = 1);
     };
 
     struct PipelineBuilder {
@@ -509,10 +514,12 @@ namespace kvk {
 
         ReturnCode build(Pipeline& pipeline,
                          Cache& cache,
-                         VkDevice device);
+                         VkDevice device,
+                         std::string_view name);
         ReturnCode buildCompute(Pipeline& pipeline,
                                 Cache& cache,
-                                VkDevice device);
+                                VkDevice device,
+                                std::string_view name);
     };
 
     struct Mesh {
@@ -589,11 +596,6 @@ namespace kvk {
 
         DescriptorAllocator descriptors;
         FrameData frames[MAX_IN_FLIGHT_FRAMES];
-
-        AllocatedImage drawImage;
-        AllocatedImage depthImage;
-
-        DescriptorAllocator gpDescriptorAllocator;
 
         //
         // Swapchain stuff
@@ -714,4 +716,7 @@ namespace kvk {
                                    std::forward<Sets>(sets)...);
     }
 
+    VkResult vkSetDebugUtilsObjectName(VkDevice device, const VkDebugUtilsObjectNameInfoEXT* nameInfo);
+
 }
+

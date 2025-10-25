@@ -206,6 +206,30 @@ namespace kvk {
 		};
 	}
 
+    VkImageViewCreateInfo imageViewCreateInfo2(VkFormat format,
+                                               VkImage image,
+                                               VkImageAspectFlags aspectFlags,
+                                               bool isCubemap,
+                                               std::uint32_t layerIndex,
+                                               std::uint32_t layerCount,
+                                               std::uint32_t mipIndex,
+                                               std::uint32_t mipCount) {
+        return {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .pNext = nullptr,
+            .image = image,
+            .viewType = isCubemap ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D,
+            .format = format,
+            .subresourceRange = {
+                .aspectMask = aspectFlags,
+                .baseMipLevel = mipIndex,
+                .levelCount = mipCount,
+                .baseArrayLayer = layerIndex,
+                .layerCount = layerCount,
+            },
+        };
+    }
+
 	void blitImageToImage(VkCommandBuffer cmd,
 						  VkImage src,
 						  VkImage dst,

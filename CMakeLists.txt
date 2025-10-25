@@ -128,7 +128,7 @@ function(addShaders target custom_target SHADERS)
         add_custom_command(
    OUTPUT ${SPIRV}
    COMMAND ${CMAKE_COMMAND} -E make_directory "${PROJECT_BINARY_DIR}/shaders/"
-   COMMAND ${GLSL_VALIDATOR} -V ${GLSL} -o ${SPIRV} --quiet
+   COMMAND ${GLSL_VALIDATOR} -V ${GLSL} -o ${SPIRV} --quiet -Od -g
    DEPENDS ${GLSL} ${ARGN})
         list(APPEND BINARY_LIST ${SPIRV})
         install(FILES ${SPIRV} DESTINATION shaders/)

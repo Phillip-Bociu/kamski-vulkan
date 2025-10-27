@@ -125,6 +125,8 @@ namespace kvk {
             .dstAccessMask = dstAccessMask,
             .oldLayout = currentLayout,
             .newLayout = newLayout,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         };
 
         imageBarrier.subresourceRange = imageSubresourceRange(aspectMask, baseMipLevel, levelCount);

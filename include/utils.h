@@ -53,7 +53,8 @@ namespace kvk {
 										 VkDevice device,
 										 VkShaderStageFlags shaderFlags,
 										 std::span<VkDescriptorSetLayoutBinding> bindings,
-                                         const VkDescriptorSetLayoutBindingFlagsCreateInfo* flags = nullptr);
+                                         const VkDescriptorSetLayoutBindingFlagsCreateInfo* flags = nullptr,
+                                         bool isPushDescriptor = false);
 
 	ReturnCode createDescriptorPool(VkDescriptorPool& pool,
 									VkDevice device,

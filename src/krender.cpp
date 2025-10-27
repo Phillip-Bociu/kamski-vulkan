@@ -31,6 +31,7 @@ namespace kvk {
     static VkDescriptorSetLayout descriptorSetLayoutFromCache(Cache& cache,
                                                               const DescriptorSet& set,
                                                               const VkDevice device,
+                                                              bool isPushDescriptor,
                                                               std::string_view name);
 
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
@@ -133,7 +134,7 @@ namespace kvk {
             .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
             .pEngineName = "Kamski",
             .engineVersion = VK_MAKE_VERSION(1, 0, 0),
-            .apiVersion = VK_API_VERSION_1_3
+            .apiVersion = VK_API_VERSION_1_4
         };
 
         state.currentFrame = 0;
@@ -422,8 +423,13 @@ namespace kvk {
         }
 
 
+        VkPhysicalDeviceVulkan14Features features14 = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
+            .pushDescriptor = VK_TRUE,
+        };
         VkPhysicalDeviceVulkan11Features features11 = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+            .pNext = &features14,
             .storageBuffer16BitAccess = VK_TRUE,
             .uniformAndStorageBuffer16BitAccess = VK_TRUE,
         };
@@ -450,6 +456,7 @@ namespace kvk {
                 .fillModeNonSolid = VK_TRUE,
                 .fragmentStoresAndAtomics = VK_TRUE,
                 .shaderInt16 = VK_TRUE,
+                .sparseBinding = VK_TRUE,
             },
         };
 
@@ -462,6 +469,7 @@ namespace kvk {
             return ReturnCode::UNKNOWN; \
         }
 
+        CHECK_FEATURE(features14, pushDescriptor);
         CHECK_FEATURE(features13, synchronization2);
         CHECK_FEATURE(features13, dynamicRendering);
         CHECK_FEATURE(features12, bufferDeviceAddress);
@@ -485,11 +493,18 @@ namespace kvk {
         CHECK_FEATURE(allDeviceFeatures.features, fragmentStoresAndAtomics);
         CHECK_FEATURE(allDeviceFeatures.features, shaderInt16);
         CHECK_FEATURE(allDeviceFeatures.features, fillModeNonSolid);
+        CHECK_FEATURE(allDeviceFeatures.features, sparseBinding);
 
 #undef CHECK_FEATURE
 
+        features14 = VkPhysicalDeviceVulkan14Features {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
+            .pushDescriptor = VK_TRUE,
+        };
+
         features11 = VkPhysicalDeviceVulkan11Features {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+            .pNext = &features14,
             .storageBuffer16BitAccess = VK_TRUE,
             .uniformAndStorageBuffer16BitAccess = VK_TRUE,
             .shaderDrawParameters = VK_TRUE,
@@ -529,6 +544,7 @@ namespace kvk {
                 .samplerAnisotropy = VK_TRUE,
                 .fragmentStoresAndAtomics = VK_TRUE,
                 .shaderInt16 = VK_TRUE,
+                .sparseBinding = VK_TRUE,
             },
         };
 
@@ -882,6 +898,11 @@ namespace kvk {
         return *this;
     }
 
+    PipelineBuilder& PipelineBuilder::setPushDescriptor(u32 setIndex) {
+        pushDescriptorIndex = setIndex;
+        return *this;
+    }
+
     PipelineBuilder& PipelineBuilder::addVertexInputAttribute(VkFormat format,
                                                               std::uint32_t offset,
                                                               std::uint32_t size) {
@@ -1221,7 +1242,11 @@ namespace kvk {
 
         descriptorSetLayouts.resize(descriptorSets.size());
         for(u32 i = 0; i != descriptorSets.size(); i++) {
-            descriptorSetLayouts[i] = descriptorSetLayoutFromCache(cache, descriptorSets[i], device, {});
+            descriptorSetLayouts[i] = descriptorSetLayoutFromCache(cache,
+                                                                   descriptorSets[i],
+                                                                   device,
+                                                                   pushDescriptorIndex == i,
+                                                                   {});
         }
 
         VkPipelineLayoutCreateInfo layoutCreateInfo = {
@@ -1404,7 +1429,11 @@ namespace kvk {
 
         descriptorSetLayouts.resize(descriptorSets.size());
         for(u32 i = 0; i != descriptorSets.size(); i++) {
-            descriptorSetLayouts[i] = descriptorSetLayoutFromCache(cache, descriptorSets[i], device, {});
+            descriptorSetLayouts[i] = descriptorSetLayoutFromCache(cache,
+                                                                   descriptorSets[i],
+                                                                   device,
+                                                                   pushDescriptorIndex == i,
+                                                                   {});
         }
 
         VkPipelineLayoutCreateInfo layoutCreateInfo = {
@@ -2144,6 +2173,16 @@ namespace kvk {
                                nullptr);
     }
 
+    void DescriptorWriter::push(VkCommandBuffer commandBuffer, u32 setIndex, const kvk::Pipeline& pipeline) {
+        KAMSKI_PROFILE();
+        vkCmdPushDescriptorSet(commandBuffer,
+                               pipeline.bindPoint,
+                               pipeline.layout,
+                               setIndex,
+                               writes.size(),
+                               writes.data());
+    }
+
     FrameData* startFrame(RendererState& state, std::uint32_t& frameIndex) {
         KAMSKI_PROFILE();
         frameIndex = state.currentFrame;
@@ -2393,7 +2432,29 @@ namespace kvk {
                                           device,
                                           stage,
                                           std::span(bindings, bindingCount),
-                                          &flags) != kvk::ReturnCode::OK) {
+                                          &flags,
+                                          false) != kvk::ReturnCode::OK) {
+            logError("Could not create descriptor layout");
+            return false;
+        }
+        return true;
+    }
+
+    bool DescriptorSetLayoutBuilder::buildPush(VkDescriptorSetLayout& layout,
+                                               VkDevice device,
+                                               VkShaderStageFlags stage) {
+        KAMSKI_PROFILE();
+        VkDescriptorSetLayoutBindingFlagsCreateInfo flags = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+            .bindingCount = bindingCount,
+            .pBindingFlags = flagArray
+        };
+        if(kvk::createDescriptorSetLayout(layout,
+                                          device,
+                                          stage,
+                                          std::span(bindings, bindingCount),
+                                          &flags,
+                                          true) != kvk::ReturnCode::OK) {
             logError("Could not create descriptor layout");
             return false;
         }
@@ -2467,6 +2528,7 @@ namespace kvk {
     static VkDescriptorSetLayout descriptorSetLayoutFromCache(Cache& cache,
                                                               const DescriptorSet& set,
                                                               const VkDevice device,
+                                                              bool isPushDescriptor,
                                                               std::string_view name) {
         std::lock_guard lck(cache.descriptorLayoutMutex);
         VkDescriptorSetLayout& layout = cache.descriptorLayouts[set];
@@ -2506,7 +2568,11 @@ namespace kvk {
                     } break;
                 }
             }
-            builder.build(layout, device, set.shaderStage);
+            if(isPushDescriptor) {
+                builder.buildPush(layout, device, set.shaderStage);
+            } else {
+                builder.build(layout, device, set.shaderStage);
+            }
         }
 
         if(!name.empty()) {
@@ -2535,7 +2601,11 @@ namespace kvk {
             memcpy(set.descriptors, descriptors, sizeof(descriptors[0]) * count);
             set.count = count;
 
-            VkDescriptorSetLayout layout = descriptorSetLayoutFromCache(cache, set, device, name);
+            VkDescriptorSetLayout layout = descriptorSetLayoutFromCache(cache,
+                                                                        set,
+                                                                        device,
+                                                                        false,
+                                                                        name);
             ReturnCode rc;
             if(descriptors[count - 1].type == Descriptor::IMAGES) {
                 const u32 descriptorCount = std::numeric_limits<u16>::max();
@@ -2612,22 +2682,29 @@ namespace kvk {
         }
     }
 
-    DescriptorSet& DescriptorSetBuilder::build(std::string_view name, VkShaderStageFlags shaderStage) {
+    DescriptorSet DescriptorSetBuilder::build(const std::string& name, VkShaderStageFlags shaderStage) {
         std::lock_guard lck(cache.descriptorMutex);
-        DescriptorSet& retval = cache.descriptors[std::string(name.begin(), name.end())];
+        DescriptorSet& retval = cache.descriptors[name];
         retval.shaderStage = shaderStage;
         buildInternal(name, retval);
         return retval;
     }
 
-    DescriptorSet& DescriptorSetBuilder::buildPerFrame(std::string_view name, VkShaderStageFlags shaderStage) {
+    DescriptorSet DescriptorSetBuilder::buildPerFrame(const std::string& name, VkShaderStageFlags shaderStage) {
         std::lock_guard lck(cache.perFrameDescriptorMutex);
         const u32 frameIndex = cache.state->currentFrame;
 
-        DescriptorSet& retval = cache.perFrameDescriptors[std::string(name.begin(), name.end())][frameIndex];
+        DescriptorSet& retval = cache.perFrameDescriptors[name][frameIndex];
         retval.shaderStage = shaderStage;
         buildInternal(name, retval);
         return retval;
+    }
+
+    void DescriptorSetBuilder::push(VkCommandBuffer commandBuffer, u32 setIndex, const kvk::Pipeline& pipeline) {
+        if(writer.bindingCount != 0) {
+            writer.push(commandBuffer, setIndex, pipeline);
+            writer.clear();
+        }
     }
 
 

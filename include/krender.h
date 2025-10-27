@@ -16,6 +16,7 @@
 #include <span>
 #include <deque>
 #include <functional>
+#include <array>
 
 #include <vulkan/vulkan.h>
 #include <vk_mem_alloc.h>
@@ -182,8 +183,8 @@ namespace kvk {
                           std::uint32_t arrayOffset = 0);
 
         void clear();
-        void updateSet(VkDevice device,
-                       VkDescriptorSet set);
+        void updateSet(VkDevice device, VkDescriptorSet set);
+        void push(VkCommandBuffer cmd, u32 setIndex, const kvk::Pipeline& pipeline);
     };
 
     struct DescriptorSetLayoutBuilder {
@@ -198,6 +199,10 @@ namespace kvk {
         bool build(VkDescriptorSetLayout& layout,
                    VkDevice device,
                    VkShaderStageFlags stage);
+
+        bool buildPush(VkDescriptorSetLayout& layout,
+                       VkDevice device,
+                       VkShaderStageFlags stage);
     };
 
 
@@ -361,7 +366,7 @@ namespace kvk {
         unordered_map<std::string, DescriptorSet> descriptors; 
 
         std::mutex perFrameDescriptorMutex;
-        unordered_map<std::string, DescriptorSet[MAX_IN_FLIGHT_FRAMES]> perFrameDescriptors; 
+        unordered_map<std::string, std::array<DescriptorSet, MAX_IN_FLIGHT_FRAMES>> perFrameDescriptors; 
 
         std::mutex descriptorLayoutMutex;
         unordered_map<DescriptorSet, VkDescriptorSetLayout, DescriptorSetLayoutHash> descriptorLayouts;
@@ -381,7 +386,6 @@ namespace kvk {
         // used for image descriptor indexing
         std::vector<VkDescriptorImageInfo> imageInfoVector;
 
-
         DescriptorSetBuilder(Cache& cache);
 
         DescriptorSetBuilder& image(VkImageView imageView, VkSampler sampler, VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL); // assumed, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
@@ -391,8 +395,10 @@ namespace kvk {
         DescriptorSetBuilder& buffer(VkBuffer buffer, VkDescriptorType type, u64 size = VK_WHOLE_SIZE, u64 offset = 0);
         DescriptorSetBuilder& sampler(VkSampler sampler);
         
-        DescriptorSet&         build(std::string_view name, VkShaderStageFlags shaderStage);
-        DescriptorSet& buildPerFrame(std::string_view name, VkShaderStageFlags shaderStage);
+        DescriptorSet          build(const std::string& name, VkShaderStageFlags shaderStage);
+        DescriptorSet  buildPerFrame(const std::string& name, VkShaderStageFlags shaderStage);
+
+        void                    push(VkCommandBuffer commandBuffer, u32 setIndex, const kvk::Pipeline& pipeline);
 
         void buildInternal(std::string_view name, DescriptorSet& set);
     };
@@ -462,6 +468,7 @@ namespace kvk {
         std::vector<VkFormat> colorAttachmentFormats;
         VkPipeline basePipeline;
         bool allowDerivatives;
+        u32 pushDescriptorIndex = INVALID_ID;
 
         VkPipelineLayoutCreateInfo layoutCreateInfo;
         VkPipelineViewportStateCreateInfo viewportState;
@@ -475,6 +482,7 @@ namespace kvk {
         VkPipelineRenderingCreateInfo renderInfo;
         VkPipelineRasterizationStateCreateInfo rasterizer;
 
+        PipelineBuilder& setPushDescriptor(u32 setIndex);
         PipelineBuilder& addShaders(std::string_view name, VkShaderStageFlags stageFlags);
         PipelineBuilder& clearShaders(VkShaderStageFlags stageFlags = VK_SHADER_STAGE_ALL);
         PipelineBuilder& setInputTopology(VkPrimitiveTopology topology);

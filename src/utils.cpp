@@ -18,7 +18,8 @@ namespace kvk {
 										 VkDevice device,
 										 VkShaderStageFlags shaderFlags,
 										 std::span<VkDescriptorSetLayoutBinding> bindings,
-                                         const VkDescriptorSetLayoutBindingFlagsCreateInfo* flags) {
+                                         const VkDescriptorSetLayoutBindingFlagsCreateInfo* flags, 
+                                         const bool isPushDescriptor) {
         KAMSKI_PROFILE();
 		for(auto& binding : bindings) {
 			binding.stageFlags |= shaderFlags;
@@ -27,6 +28,7 @@ namespace kvk {
 		VkDescriptorSetLayoutCreateInfo createInfo = {
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
 			.pNext = flags,
+            .flags = isPushDescriptor ? VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT : 0u,
 			.bindingCount = std::uint32_t(bindings.size()),
 			.pBindings = bindings.data(),
 		};

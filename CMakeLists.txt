@@ -128,7 +128,7 @@ function(addShaders target custom_target SHADERS)
         add_custom_command(
    OUTPUT ${SPIRV}
    COMMAND ${CMAKE_COMMAND} -E make_directory "${PROJECT_BINARY_DIR}/shaders/"
-   COMMAND ${SLANGC} -target spirv -entry main ${SLANG} -o ${SPIRV} -g -O0 -fvk-use-gl-layout -emit-spirv-via-glsl
+   COMMAND ${SLANGC} -target spirv -entry main ${SLANG} -o ${SPIRV} -g -O0 -matrix-layout-row-major
    DEPENDS ${SLANG} ${ARGN})
         list(APPEND BINARY_LIST ${SPIRV})
         install(FILES ${SPIRV} DESTINATION shaders/)

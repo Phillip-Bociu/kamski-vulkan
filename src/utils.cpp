@@ -18,7 +18,8 @@ namespace kvk {
 										 VkDevice device,
 										 VkShaderStageFlags shaderFlags,
 										 std::span<VkDescriptorSetLayoutBinding> bindings,
-                                         const VkDescriptorSetLayoutBindingFlagsCreateInfo* flags) {
+                                         const VkDescriptorSetLayoutBindingFlagsCreateInfo* flags, 
+                                         const bool isPushDescriptor) {
         KAMSKI_PROFILE();
 		for(auto& binding : bindings) {
 			binding.stageFlags |= shaderFlags;
@@ -27,6 +28,7 @@ namespace kvk {
 		VkDescriptorSetLayoutCreateInfo createInfo = {
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
 			.pNext = flags,
+            .flags = isPushDescriptor ? VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT : 0u,
 			.bindingCount = std::uint32_t(bindings.size()),
 			.pBindings = bindings.data(),
 		};
@@ -123,6 +125,8 @@ namespace kvk {
             .dstAccessMask = dstAccessMask,
             .oldLayout = currentLayout,
             .newLayout = newLayout,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         };
 
         imageBarrier.subresourceRange = imageSubresourceRange(aspectMask, baseMipLevel, levelCount);
@@ -205,6 +209,30 @@ namespace kvk {
 			},
 		};
 	}
+
+    VkImageViewCreateInfo imageViewCreateInfo2(VkFormat format,
+                                               VkImage image,
+                                               VkImageAspectFlags aspectFlags,
+                                               bool isCubemap,
+                                               std::uint32_t layerIndex,
+                                               std::uint32_t layerCount,
+                                               std::uint32_t mipIndex,
+                                               std::uint32_t mipCount) {
+        return {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .pNext = nullptr,
+            .image = image,
+            .viewType = isCubemap ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D,
+            .format = format,
+            .subresourceRange = {
+                .aspectMask = aspectFlags,
+                .baseMipLevel = mipIndex,
+                .levelCount = mipCount,
+                .baseArrayLayer = layerIndex,
+                .layerCount = layerCount,
+            },
+        };
+    }
 
 	void blitImageToImage(VkCommandBuffer cmd,
 						  VkImage src,

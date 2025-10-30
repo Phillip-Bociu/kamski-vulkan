@@ -37,6 +37,10 @@ if(DEFINED PROFILE)
     add_subdirectory(tracy)
 endif()
 
+# SPIR-V Reflection
+add_library(spirv_reflect STATIC "${CMAKE_CURRENT_SOURCE_DIR}/spirv-reflect/spirv_reflect.c")
+target_include_directories(spirv_reflect PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/spirv-reflect")
+
 ###########################################################################################
 # Globs
 ###########################################################################################
@@ -61,10 +65,13 @@ target_compile_options(kamskiVk PUBLIC /Zi)
 
 target_link_directories(kamskiVk PUBLIC $ENV{VULKAN_SDK}/Lib/)
 if (WIN32)
-    target_link_libraries(kamskiVk PUBLIC vulkan-1 VulkanMemoryAllocator glm-header-only)
+    target_link_libraries(kamskiVk PUBLIC vulkan-1)
 else ()
-    target_link_libraries(kamskiVk PUBLIC vulkan VulkanMemoryAllocator glm-header-only)
+    target_link_libraries(kamskiVk PUBLIC vulkan)
 endif ()
+
+target_link_libraries(kamskiVk PUBLIC spirv_reflect VulkanMemoryAllocator glm-header-only)
+
 
 if(DEFINED KAMSKI_PROFILE)
     message("PROFILER ENABLED")
@@ -121,7 +128,7 @@ function(addShaders target custom_target SHADERS)
         add_custom_command(
    OUTPUT ${SPIRV}
    COMMAND ${CMAKE_COMMAND} -E make_directory "${PROJECT_BINARY_DIR}/shaders/"
-   COMMAND ${GLSL_VALIDATOR} -V ${GLSL} -o ${SPIRV} --quiet
+   COMMAND ${GLSL_VALIDATOR} -V ${GLSL} -o ${SPIRV} --quiet -Od -g
    DEPENDS ${GLSL} ${ARGN})
         list(APPEND BINARY_LIST ${SPIRV})
         install(FILES ${SPIRV} DESTINATION shaders/)

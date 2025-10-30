@@ -34,6 +34,15 @@ namespace kvk {
                                               std::uint32_t baseArrayLayer = 0,
                                               std::uint32_t mipLevelCount = 1);
 
+    VkImageViewCreateInfo imageViewCreateInfo2(VkFormat format,
+                                               VkImage image,
+                                               VkImageAspectFlags aspectFlags,
+                                               bool isCubemap = false,
+                                               std::uint32_t layerIndex = 0,
+                                               std::uint32_t layerCount = VK_REMAINING_ARRAY_LAYERS,
+                                               std::uint32_t mipIndex = 0,
+                                               std::uint32_t mipCount = VK_REMAINING_MIP_LEVELS);
+
 	VkDescriptorSetLayoutBinding descriptorSetLayoutBinding(std::uint32_t binding,
 															VkDescriptorType type);
 
@@ -44,7 +53,8 @@ namespace kvk {
 										 VkDevice device,
 										 VkShaderStageFlags shaderFlags,
 										 std::span<VkDescriptorSetLayoutBinding> bindings,
-                                         const VkDescriptorSetLayoutBindingFlagsCreateInfo* flags = nullptr);
+                                         const VkDescriptorSetLayoutBindingFlagsCreateInfo* flags = nullptr,
+                                         bool isPushDescriptor = false);
 
 	ReturnCode createDescriptorPool(VkDescriptorPool& pool,
 									VkDevice device,

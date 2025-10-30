@@ -1105,11 +1105,13 @@ namespace kvk {
             fileHandle.read((char*)fileData.data(), size);
 
             ShaderModule module;
+            logInfo("Creating %s...", path.c_str());
             ReturnCode rc = createShaderModuleFromMemory(module.module, device, fileData.data(), size);
             if(rc != ReturnCode::OK) {
                 logError("Could not create vertex shader module %s", path.c_str());
                 return rc;
             }
+            logInfo("Created %s", path.c_str());
             spvReflectCreateShaderModule(size, fileData.data(), &module.reflection);
 
             lock.lock();
@@ -1201,8 +1203,8 @@ namespace kvk {
             vkDestroyPipeline(device, pipeline.handle, nullptr);
         }
 
-        const std::string vertexPath = std::string(shaderNames[SHADER_STAGE_VERTEX].begin(), shaderNames[SHADER_STAGE_VERTEX].end()) + std::string(".vert.glsl.spv");
-        const std::string fragmentPath = std::string(shaderNames[SHADER_STAGE_FRAGMENT].begin(), shaderNames[SHADER_STAGE_FRAGMENT].end()) + std::string(".frag.glsl.spv");
+        const std::string vertexPath = std::string(shaderNames[SHADER_STAGE_VERTEX].begin(), shaderNames[SHADER_STAGE_VERTEX].end()) + std::string(".vert.slang.spv");
+        const std::string fragmentPath = std::string(shaderNames[SHADER_STAGE_FRAGMENT].begin(), shaderNames[SHADER_STAGE_FRAGMENT].end()) + std::string(".frag.slang.spv");
 
         ShaderModule vertexModule;
         ShaderModule fragmentModule;
@@ -1407,7 +1409,7 @@ namespace kvk {
             vkDestroyPipeline(device, pipeline.handle, nullptr);
         }
 
-        const std::string computePath = std::string(shaderNames[SHADER_STAGE_COMPUTE].begin(), shaderNames[SHADER_STAGE_COMPUTE].end()) + std::string(".comp.glsl.spv");
+        const std::string computePath = std::string(shaderNames[SHADER_STAGE_COMPUTE].begin(), shaderNames[SHADER_STAGE_COMPUTE].end()) + std::string(".comp.slang.spv");
 
         ShaderModule computeModule;
 

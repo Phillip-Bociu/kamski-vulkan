@@ -1105,13 +1105,11 @@ namespace kvk {
             fileHandle.read((char*)fileData.data(), size);
 
             ShaderModule module;
-            logInfo("Creating %s...", path.c_str());
             ReturnCode rc = createShaderModuleFromMemory(module.module, device, fileData.data(), size);
             if(rc != ReturnCode::OK) {
                 logError("Could not create vertex shader module %s", path.c_str());
                 return rc;
             }
-            logInfo("Created %s", path.c_str());
             spvReflectCreateShaderModule(size, fileData.data(), &module.reflection);
 
             lock.lock();

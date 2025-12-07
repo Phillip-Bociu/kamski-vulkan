@@ -6,7 +6,6 @@
 #include <thread>
 
 #define VMA_IMPLEMENTATION
-#define GLM_ENABLE_EXPERIMENTAL
 #include "common.h"
 #include "krender.h"
 #include "utils.h"

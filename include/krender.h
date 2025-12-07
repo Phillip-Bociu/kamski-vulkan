@@ -47,7 +47,7 @@
     }while(0)
 
 namespace kvk {
-    static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 3;
+    static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 1;
 
     struct InitSettings {
         const char* appName;

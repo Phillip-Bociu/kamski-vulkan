@@ -38,7 +38,27 @@ namespace kvk {
         VkDebugUtilsMessageTypeFlagsEXT messageType,
         const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
         void *pUserData) {
-        logError("Validation layer: %s", pCallbackData->pMessage);
+        switch(messageSeverity) {
+            case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT: {
+                logInfo("Validation layer: %s", pCallbackData->pMessage);
+            } break;
+
+            case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT: {
+                logWarning("Validation layer: %s", pCallbackData->pMessage);
+            } break;
+
+            case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT: {
+                logDebug("Validation layer: %s", pCallbackData->pMessage);
+            } break;
+
+            case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT: {
+                logError("Validation layer: %s", pCallbackData->pMessage);
+            } break;
+
+            default: {
+                kassert(false);
+            } break;
+        }
         return VK_FALSE;
     }
 

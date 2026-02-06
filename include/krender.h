@@ -389,7 +389,7 @@ namespace kvk {
         DescriptorSetBuilder(Cache& cache);
 
         DescriptorSetBuilder& image(VkImageView imageView, VkSampler sampler, VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL); // assumed, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
-        DescriptorSetBuilder& image(VkImageView imageView, VkDescriptorType type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VkImageLayout layout = VkImageLayout(0));
+        DescriptorSetBuilder& image(VkImageView imageView, VkDescriptorType type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         DescriptorSetBuilder& images(std::span<AllocatedImage> imagesToUpload, u32 offset, VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL); // assumed, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
 
         DescriptorSetBuilder& buffer(VkBuffer buffer, VkDescriptorType type, u64 size = VK_WHOLE_SIZE, u64 offset = 0);

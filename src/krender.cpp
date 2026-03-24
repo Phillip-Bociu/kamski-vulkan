@@ -1220,8 +1220,8 @@ namespace kvk {
             vkDestroyPipeline(device, pipeline.handle, nullptr);
         }
 
-        const std::string vertexPath = std::string(shaderNames[SHADER_STAGE_VERTEX].begin(), shaderNames[SHADER_STAGE_VERTEX].end()) + std::string(".vert.slang.spv");
-        const std::string fragmentPath = std::string(shaderNames[SHADER_STAGE_FRAGMENT].begin(), shaderNames[SHADER_STAGE_FRAGMENT].end()) + std::string(".frag.slang.spv");
+        const std::string vertexPath = std::string(shaderNames[SHADER_STAGE_VERTEX].begin(), shaderNames[SHADER_STAGE_VERTEX].end()) + std::string(".vertex.spv");
+        const std::string fragmentPath = std::string(shaderNames[SHADER_STAGE_FRAGMENT].begin(), shaderNames[SHADER_STAGE_FRAGMENT].end()) + std::string(".pixel.spv");
 
         ShaderModule vertexModule;
         ShaderModule fragmentModule;
@@ -1426,7 +1426,7 @@ namespace kvk {
             vkDestroyPipeline(device, pipeline.handle, nullptr);
         }
 
-        const std::string computePath = std::string(shaderNames[SHADER_STAGE_COMPUTE].begin(), shaderNames[SHADER_STAGE_COMPUTE].end()) + std::string(".comp.slang.spv");
+        const std::string computePath = std::string(shaderNames[SHADER_STAGE_COMPUTE].begin(), shaderNames[SHADER_STAGE_COMPUTE].end()) + std::string(".compute.spv");
 
         ShaderModule computeModule;
 

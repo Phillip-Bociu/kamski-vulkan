@@ -237,7 +237,7 @@ namespace kvk {
 
     struct DescriptorSet {
         VkDescriptorSet handle = VK_NULL_HANDLE;
-        Descriptor descriptors[64];
+        std::array<Descriptor, 64> descriptors;
         VkShaderStageFlags shaderStage = 0;
         std::uint32_t count = 0;
 
@@ -384,7 +384,7 @@ namespace kvk {
         DescriptorWriter writer;
         std::uint32_t count = 0;
         // used for image descriptor indexing
-        std::vector<VkDescriptorImageInfo> imageInfoVector;
+        vector<VkDescriptorImageInfo> imageInfoVector;
 
         DescriptorSetBuilder(Cache& cache);
 
@@ -725,6 +725,12 @@ namespace kvk {
     }
 
     VkResult vkSetDebugUtilsObjectName(VkDevice device, const VkDebugUtilsObjectNameInfoEXT* nameInfo);
+
+    VkDescriptorSetLayout descriptorSetLayoutFromCache(Cache& cache,
+                                                       const DescriptorSet& set,
+                                                       const VkDevice device,
+                                                       bool isPushDescriptor,
+                                                       std::string_view name);
 
 }
 

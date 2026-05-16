@@ -27,11 +27,6 @@
 #endif
 
 namespace kvk {
-    static VkDescriptorSetLayout descriptorSetLayoutFromCache(Cache& cache,
-                                                              const DescriptorSet& set,
-                                                              const VkDevice device,
-                                                              bool isPushDescriptor,
-                                                              std::string_view name);
 
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -2544,11 +2539,11 @@ namespace kvk {
         return *this;
     }
 
-    static VkDescriptorSetLayout descriptorSetLayoutFromCache(Cache& cache,
-                                                              const DescriptorSet& set,
-                                                              const VkDevice device,
-                                                              bool isPushDescriptor,
-                                                              std::string_view name) {
+    VkDescriptorSetLayout descriptorSetLayoutFromCache(Cache& cache,
+                                                       const DescriptorSet& set,
+                                                       const VkDevice device,
+                                                       bool isPushDescriptor,
+                                                       std::string_view name) {
         std::lock_guard lck(cache.descriptorLayoutMutex);
         VkDescriptorSetLayout& layout = cache.descriptorLayouts[set];
         if(layout == VK_NULL_HANDLE) {
@@ -2594,8 +2589,8 @@ namespace kvk {
             }
         }
 
-        if(!name.empty()) {
 #ifdef KAMSKI_DEBUG
+        if(!name.empty()) {
             string layoutName(name.begin(), name.end());
             layoutName += "_layout";
 
@@ -2607,8 +2602,8 @@ namespace kvk {
             };
             VkResult res = vkSetDebugUtilsObjectName(device, &nameInfo);
             kassert(res == VK_SUCCESS);
-#endif
         }
+#endif
         return layout;
     }
 
@@ -2617,7 +2612,7 @@ namespace kvk {
         DescriptorAllocator& allocator = cache.state->descriptors;
 
         if(set.handle == VK_NULL_HANDLE) {
-            memcpy(set.descriptors, descriptors, sizeof(descriptors[0]) * count);
+            memcpy(set.descriptors.data(), descriptors, sizeof(descriptors[0]) * count);
             set.count = count;
 
             VkDescriptorSetLayout layout = descriptorSetLayoutFromCache(cache,
@@ -2693,7 +2688,7 @@ namespace kvk {
                 }
             }
             
-            memcpy(set.descriptors, descriptors, sizeof(descriptors[0]) * count);
+            memcpy(set.descriptors.data(), descriptors, sizeof(descriptors[0]) * count);
             set.count = count;
         }
         if(writer.bindingCount != 0) {

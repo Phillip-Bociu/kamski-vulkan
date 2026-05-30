@@ -87,57 +87,6 @@ endif()
 
 target_include_directories(kamskiVk PUBLIC ./include/ $ENV{VULKAN_SDK}/Include/)
 
-#target_precompile_headers(kamskiVk PUBLIC
-# "$<$<COMPILE_LANGUAGE:CXX>:deque>"
-# "$<$<COMPILE_LANGUAGE:CXX>:thread>"
-# "$<$<COMPILE_LANGUAGE:CXX>:mutex>"
-# "$<$<COMPILE_LANGUAGE:CXX>:atomic>"
-# "$<$<COMPILE_LANGUAGE:CXX>:algorithm>"
-# "$<$<COMPILE_LANGUAGE:CXX>:vector>"
-# "$<$<COMPILE_LANGUAGE:CXX>:span>"
-# "$<$<COMPILE_LANGUAGE:CXX>:set>"
-# "$<$<COMPILE_LANGUAGE:CXX>:numeric>"
-# "$<$<COMPILE_LANGUAGE:CXX>:fstream>"
-#)
-
-###########################################################################################
-# Shader Compilation
-###########################################################################################
-if(WIN32)
-    if (${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "AMD64")
-        set(SLANGC "$ENV{VULKAN_SDK}/Bin/slangc.exe" PARENT_SCOPE)
-        set(SLANGC "$ENV{VULKAN_SDK}/Bin/slangc.exe")
-    else()
-        set(SLANGC "$ENV{VULKAN_SDK}/Bin32/slangc.exe" PARENT_SCOPE)
-        set(SLANGC "$ENV{VULKAN_SDK}/Bin32/slangc.exe")
-    endif()
-else()
-    if (${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "AMD64")
-        set(SLANGC "slangc" PARENT_SCOPE)
-        set(SLANGC "slangc")
-    else()
-        set(SLANGC "slangc" PARENT_SCOPE)
-        set(SLANGC "slangc")
-    endif()
-endif()
-
-function(addShaders target custom_target SHADERS)
-    foreach(SLANG ${SHADERS})
-        get_filename_component(FILE_NAME ${SLANG} NAME)
-        set(SPIRV "${PROJECT_BINARY_DIR}/shaders/${FILE_NAME}.spv")
-        add_custom_command(
-   OUTPUT ${SPIRV}
-   COMMAND ${CMAKE_COMMAND} -E make_directory "${PROJECT_BINARY_DIR}/shaders/"
-   COMMAND ${SLANGC} -target spirv -entry main ${SLANG} -o ${SPIRV} -g -O0 -matrix-layout-row-major
-   DEPENDS ${SLANG} ${ARGN})
-        list(APPEND BINARY_LIST ${SPIRV})
-        install(FILES ${SPIRV} DESTINATION shaders/)
-    endforeach(SLANG)
-
-    add_custom_target(${custom_target} DEPENDS ${BINARY_LIST})
-    add_dependencies(${target} ${custom_target})
-endfunction()
-
 ###########################################################################################
 # Test compilation
 ###########################################################################################

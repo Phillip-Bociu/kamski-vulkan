@@ -912,6 +912,11 @@ namespace kvk {
         return *this;
     }
 
+    PipelineBuilder& PipelineBuilder::setPipelineLayout(VkPipelineLayout layout) {
+        this->pipelineLayout = layout;
+        return *this;
+    }
+
     PipelineBuilder& PipelineBuilder::setPushDescriptor(u32 setIndex) {
         pushDescriptorIndex = setIndex;
         return *this;

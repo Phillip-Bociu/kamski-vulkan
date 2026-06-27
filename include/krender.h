@@ -492,8 +492,13 @@ namespace kvk {
         PipelineBuilder&                       addShaders(std::string_view name, VkShaderStageFlags stageFlags, std::string_view entryPoint = "main");
         PipelineBuilder&                       clearShaders(VkShaderStageFlags stageFlags = VK_SHADER_STAGE_ALL);
         PipelineBuilder&                       setInputTopology(VkPrimitiveTopology topology);
+        PipelineBuilder&                       setPrimitiveRestart(bool enable);
         PipelineBuilder&                       setPolygonMode(VkPolygonMode poly);
+        PipelineBuilder&                       setLineWidth(float width);
         PipelineBuilder&                       setCullMode(VkCullModeFlags cullMode, VkFrontFace face);
+        PipelineBuilder&                       setDepthClamp(bool enable);
+        PipelineBuilder&                       setDepthBias(float constantFactor, float slopeFactor, float clamp);
+        PipelineBuilder&                       setSampleCount(VkSampleCountFlagBits samples);
         PipelineBuilder&                       addColorAttachmentFormat(VkFormat format, std::uint32_t count = 1);
         PipelineBuilder&                       setDepthAttachmentFormat(VkFormat format);
         PipelineBuilder&                       setStencilAttachmentFormat(VkFormat format);
@@ -502,6 +507,7 @@ namespace kvk {
         PipelineBuilder&                       setPipelineLayout(VkPipelineLayout layout);
 
         PipelineBuilder&                       enableDepthTest(bool depthWriteEnable, VkCompareOp op);
+        PipelineBuilder&                       enableDepthBounds(float minBounds, float maxBounds);
         PipelineBuilder&                       enableStencilTest(VkCompareOp compareOp, bool enableWriting);
         PipelineBuilder&                       enableBlendingAdditive();
         PipelineBuilder&                       enableBlendingAlpha();

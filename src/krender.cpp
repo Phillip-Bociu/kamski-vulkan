@@ -1018,6 +1018,13 @@ namespace kvk {
         return *this;
     }
 
+    PipelineBuilder& PipelineBuilder::enableDepthBounds(float minBounds, float maxBounds) {
+        depthStencil.depthBoundsTestEnable = VK_TRUE;
+        depthStencil.minDepthBounds        = minBounds;
+        depthStencil.maxDepthBounds        = maxBounds;
+        return *this;
+    }
+
     PipelineBuilder& PipelineBuilder::enableStencilTest(VkCompareOp compareOp, bool enableWriting) {
         depthStencil.stencilTestEnable = VK_TRUE;
         depthStencil.back              = {
@@ -1076,14 +1083,42 @@ namespace kvk {
         return *this;
     }
 
+    PipelineBuilder& PipelineBuilder::setPrimitiveRestart(bool enable) {
+        inputAssembly.primitiveRestartEnable = enable ? VK_TRUE : VK_FALSE;
+        return *this;
+    }
+
     PipelineBuilder& PipelineBuilder::setPolygonMode(VkPolygonMode poly) {
         rasterizer.polygonMode = poly;
+        return *this;
+    }
+
+    PipelineBuilder& PipelineBuilder::setLineWidth(float width) {
+        rasterizer.lineWidth = width;
         return *this;
     }
 
     PipelineBuilder& PipelineBuilder::setCullMode(VkCullModeFlags cullMode, VkFrontFace face) {
         rasterizer.cullMode  = cullMode;
         rasterizer.frontFace = face;
+        return *this;
+    }
+
+    PipelineBuilder& PipelineBuilder::setDepthClamp(bool enable) {
+        rasterizer.depthClampEnable = enable ? VK_TRUE : VK_FALSE;
+        return *this;
+    }
+
+    PipelineBuilder& PipelineBuilder::setDepthBias(float constantFactor, float slopeFactor, float clamp) {
+        rasterizer.depthBiasEnable         = VK_TRUE;
+        rasterizer.depthBiasConstantFactor = constantFactor;
+        rasterizer.depthBiasSlopeFactor    = slopeFactor;
+        rasterizer.depthBiasClamp          = clamp;
+        return *this;
+    }
+
+    PipelineBuilder& PipelineBuilder::setSampleCount(VkSampleCountFlagBits samples) {
+        multisample.rasterizationSamples = samples;
         return *this;
     }
 
@@ -1116,7 +1151,6 @@ namespace kvk {
                                       VkDevice         device,
                                       std::string_view name) {
         KAMSKI_PROFILE();
-
         if(pipeline.handle != VK_NULL_HANDLE) {
             vkDestroyPipeline(device, pipeline.handle, nullptr);
         }

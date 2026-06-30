@@ -1980,6 +1980,9 @@ namespace kvk {
 
     void DescriptorWriter::updateSet(VkDevice device, VkDescriptorSet set) {
         KAMSKI_PROFILE();
+        if(writes.empty()) {
+            return;
+        }
         for(auto& write : writes) {
             write.dstSet = set;
         }

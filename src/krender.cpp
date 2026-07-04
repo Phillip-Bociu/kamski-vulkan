@@ -1,4 +1,3 @@
-#include "spirv_reflect.h"
 #include "vulkan/vulkan_core.h"
 #include <cstdint>
 #include <limits>
@@ -1040,39 +1039,32 @@ namespace kvk {
         return *this;
     }
 
-    PipelineBuilder& PipelineBuilder::addShaders(std::string_view name, VkShaderStageFlags stageFlags, std::string_view entryPoint) {
+    PipelineBuilder& PipelineBuilder::addShaders(std::string_view name, VkShaderStageFlags stageFlags) {
         if(stageFlags & VK_SHADER_STAGE_VERTEX_BIT) {
-            shaderNames[SHADER_STAGE_VERTEX]     = name;
-            entryPointNames[SHADER_STAGE_VERTEX] = entryPoint;
+            shaderNames[SHADER_STAGE_VERTEX] = name;
         }
 
         if(stageFlags & VK_SHADER_STAGE_FRAGMENT_BIT) {
-            shaderNames[SHADER_STAGE_FRAGMENT]     = name;
-            entryPointNames[SHADER_STAGE_FRAGMENT] = entryPoint;
+            shaderNames[SHADER_STAGE_FRAGMENT] = name;
         }
 
         if(stageFlags & VK_SHADER_STAGE_COMPUTE_BIT) {
-            shaderNames[SHADER_STAGE_COMPUTE]     = name;
-            entryPointNames[SHADER_STAGE_COMPUTE] = entryPoint;
+            shaderNames[SHADER_STAGE_COMPUTE] = name;
         }
-
         return *this;
     }
 
     PipelineBuilder& PipelineBuilder::clearShaders(VkShaderStageFlags stageFlags) {
         if(stageFlags & VK_SHADER_STAGE_VERTEX_BIT) {
-            shaderNames[SHADER_STAGE_VERTEX]     = {};
-            entryPointNames[SHADER_STAGE_VERTEX] = {};
+            shaderNames[SHADER_STAGE_VERTEX] = {};
         }
 
         if(stageFlags & VK_SHADER_STAGE_FRAGMENT_BIT) {
-            shaderNames[SHADER_STAGE_FRAGMENT]     = {};
-            entryPointNames[SHADER_STAGE_FRAGMENT] = {};
+            shaderNames[SHADER_STAGE_FRAGMENT] = {};
         }
 
         if(stageFlags & VK_SHADER_STAGE_COMPUTE_BIT) {
-            shaderNames[SHADER_STAGE_COMPUTE]     = {};
-            entryPointNames[SHADER_STAGE_COMPUTE] = {};
+            shaderNames[SHADER_STAGE_COMPUTE] = {};
         }
 
         return *this;
@@ -1183,14 +1175,14 @@ namespace kvk {
                 .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                 .stage  = VK_SHADER_STAGE_VERTEX_BIT,
                 .module = vertexModule,
-                .pName  = entryPointNames[SHADER_STAGE_VERTEX].data(),
+                .pName  = "main",
             },
 
             {
                 .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                 .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
                 .module = shaderNames[SHADER_STAGE_FRAGMENT].empty() ? VK_NULL_HANDLE : fragmentModule,
-                .pName  = entryPointNames[SHADER_STAGE_FRAGMENT].data(),
+                .pName  = "main",
             }
         };
 
@@ -1304,7 +1296,7 @@ namespace kvk {
                 .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                 .stage  = VK_SHADER_STAGE_COMPUTE_BIT,
                 .module = computeModule,
-                .pName  = entryPointNames[SHADER_STAGE_COMPUTE].data(),
+                .pName  = "main",
             },
         };
 
@@ -2315,7 +2307,8 @@ namespace kvk {
 
     DescriptorSetBuilder& DescriptorSetBuilder::images(std::span<kvk::AllocatedImage> imagesToUpload, u32 offset, VkImageLayout layout) {
         descriptors[count].lastUploadedImageIndex = offset + imagesToUpload.size();
-        descriptors[count].type                   = Descriptor::IMAGES;
+        descriptors[count].type                   = Descriptor::IMAGE;
+        descriptors[count].imageCount             = imagesToUpload.size() + offset;
 
         imageInfoVector.resize(imagesToUpload.size());
         for(u32 i = 0; i != imagesToUpload.size(); i++) {
@@ -2363,7 +2356,19 @@ namespace kvk {
                 } break;
 
                 case kvk::Descriptor::IMAGE: {
-                    builder.addBinding(i, set.descriptors[i].imageType);
+                    const std::uint32_t imageCount = set.descriptors[i].imageCount;
+                    if(imageCount == 1) {
+                        builder.addBinding(i, set.descriptors[i].imageType);
+                    } else if(imageCount == std::numeric_limits<u16>::max()) {
+                        builder.addBinding(i,
+                                           set.descriptors[i].imageType,
+                                           std::numeric_limits<u16>::max(),
+                                           VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT);
+                    } else {
+                        builder.addBinding(i,
+                                           set.descriptors[i].imageType,
+                                           imageCount);
+                    }
                 } break;
 
                 case kvk::Descriptor::SAMPLER: {
@@ -2372,13 +2377,6 @@ namespace kvk {
 
                 case kvk::Descriptor::BUFFER: {
                     builder.addBinding(i, set.descriptors[i].bufferType);
-                } break;
-
-                case kvk::Descriptor::IMAGES: {
-                    builder.addBinding(i,
-                                       VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-                                       std::numeric_limits<u16>::max(),
-                                       VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT);
                 } break;
 
                 case kvk::Descriptor::NONE: {
@@ -2429,7 +2427,7 @@ namespace kvk {
                                                                         false,
                                                                         name);
             ReturnCode            rc;
-            if(descriptors[count - 1].type == Descriptor::IMAGES) {
+            if(descriptors[count - 1].type == Descriptor::IMAGE && descriptors[count - 1].imageCount == std::numeric_limits<u16>::max()) {
                 const u32                                          descriptorCount      = std::numeric_limits<u16>::max();
                 VkDescriptorSetVariableDescriptorCountAllocateInfo setAllocateCountInfo = {
                     .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO,
@@ -2465,7 +2463,11 @@ namespace kvk {
                 } break;
 
                 case kvk::Descriptor::IMAGE: {
-                    shouldRemove = descriptors[i].image == set.descriptors[i].image;
+                    if(descriptors[i].imageCount == 1) {
+                        shouldRemove = descriptors[i].image == set.descriptors[i].image;
+                    } else {
+                        shouldRemove = writer.writes.back().descriptorCount == 0;
+                    }
                 } break;
 
                 case kvk::Descriptor::SAMPLER: {
@@ -2474,10 +2476,6 @@ namespace kvk {
 
                 case kvk::Descriptor::BUFFER: {
                     shouldRemove = descriptors[i].buffer == set.descriptors[i].buffer;
-                } break;
-
-                case kvk::Descriptor::IMAGES: {
-                    shouldRemove = writer.writes.back().descriptorCount == 0;
                 } break;
 
                 case kvk::Descriptor::NONE: {

@@ -217,6 +217,7 @@ namespace kvk {
             struct {
                 VkImageView      image;
                 VkDescriptorType imageType;
+                std::uint32_t    imageCount;
             };
             struct {
                 VkBuffer         buffer;
@@ -233,7 +234,6 @@ namespace kvk {
             IMAGE,
             BUFFER,
             SAMPLER,
-            IMAGES,
         } type = NONE;
     };
 
@@ -325,6 +325,7 @@ namespace kvk {
 
                 case kvk::Descriptor::IMAGE: {
                     retval = (retval << 1) ^ std::hash<std::uint32_t>()(s.descriptors[i].imageType);
+                    retval = (retval << 1) ^ std::hash<std::uint32_t>()(s.descriptors[i].imageCount);
                 } break;
 
                 case kvk::Descriptor::SAMPLER: {
@@ -333,11 +334,6 @@ namespace kvk {
 
                 case kvk::Descriptor::BUFFER: {
                     retval = (retval << 1) ^ std::hash<std::uint32_t>()(s.descriptors[i].bufferType);
-                } break;
-
-                case kvk::Descriptor::IMAGES: {
-                    retval = (retval << 1) ^ std::hash<std::uint32_t>()(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
-                    retval = (retval << 1) ^ std::hash<std::uint32_t>()(std::numeric_limits<u16>::max());
                 } break;
 
                 case kvk::Descriptor::NONE: {
@@ -467,7 +463,6 @@ namespace kvk {
         };
 
         std::string_view                       shaderNames[SHADER_STAGE_COUNT];
-        std::string_view                       entryPointNames[SHADER_STAGE_COUNT];
         std::vector<VkSpecializationMapEntry>  specializationConstants[SHADER_STAGE_COUNT];
         std::vector<std::uint8_t>              specializationConstantData[SHADER_STAGE_COUNT];
 
@@ -489,7 +484,7 @@ namespace kvk {
         VkPipelineRasterizationStateCreateInfo rasterizer;
 
         PipelineBuilder&                       setPushDescriptor(u32 setIndex);
-        PipelineBuilder&                       addShaders(std::string_view name, VkShaderStageFlags stageFlags, std::string_view entryPoint = "main");
+        PipelineBuilder&                       addShaders(std::string_view name, VkShaderStageFlags stageFlags);
         PipelineBuilder&                       clearShaders(VkShaderStageFlags stageFlags = VK_SHADER_STAGE_ALL);
         PipelineBuilder&                       setInputTopology(VkPrimitiveTopology topology);
         PipelineBuilder&                       setPrimitiveRestart(bool enable);

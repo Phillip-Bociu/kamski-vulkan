@@ -1151,7 +1151,7 @@ namespace kvk {
         vector<VkDescriptorSetLayout> descriptorSetLayouts;
         vector<DescriptorSet>         descriptorSets;
         VkShaderModule                vertexModule;
-        VkShaderModule                fragmentModule;
+        VkShaderModule                fragmentModule    = VK_NULL_HANDLE;
         const std::string             vertexPath        = std::string(shaderNames[SHADER_STAGE_VERTEX].begin(), shaderNames[SHADER_STAGE_VERTEX].end()) + std::string(".vertex.spv");
         const std::string             fragmentPath      = std::string(shaderNames[SHADER_STAGE_FRAGMENT].begin(), shaderNames[SHADER_STAGE_FRAGMENT].end()) + std::string(".pixel.spv");
         VkPushConstantRange           pushConstantRange = {};
@@ -1162,12 +1162,15 @@ namespace kvk {
             logError("Could not create shader module from %s: %d", vertexPath.c_str(), rc);
             return rc;
         }
-        rc = createShaderModuleFromFile(fragmentModule,
-                                        device,
-                                        fragmentPath.c_str());
-        if(rc != kvk::ReturnCode::OK) {
-            logError("Could not create shader module from %s: %d", fragmentPath.c_str(), rc);
-            return rc;
+        // A pipeline without a fragment stage (e.g. a depth-only pass) has no module to load.
+        if(!shaderNames[SHADER_STAGE_FRAGMENT].empty()) {
+            rc = createShaderModuleFromFile(fragmentModule,
+                                            device,
+                                            fragmentPath.c_str());
+            if(rc != kvk::ReturnCode::OK) {
+                logError("Could not create shader module from %s: %d", fragmentPath.c_str(), rc);
+                return rc;
+            }
         }
 
         VkPipelineShaderStageCreateInfo shaderStages[] = {
@@ -1181,7 +1184,7 @@ namespace kvk {
             {
                 .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                 .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-                .module = shaderNames[SHADER_STAGE_FRAGMENT].empty() ? VK_NULL_HANDLE : fragmentModule,
+                .module = fragmentModule,
                 .pName  = "main",
             }
         };

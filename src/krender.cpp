@@ -1461,9 +1461,11 @@ namespace kvk {
             logError("Could not create draw image");
             return ReturnCode::UNKNOWN;
         }
-        image.format = format;
-        image.extent = extent;
-        image.usage  = usageFlags;
+        image.format     = format;
+        image.extent     = extent;
+        image.usage      = usageFlags;
+        image.layerCount = 1;
+        image.mipCount   = 1;
         return ReturnCode::OK;
     }
 

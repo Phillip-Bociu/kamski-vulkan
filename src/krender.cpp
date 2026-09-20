@@ -469,6 +469,8 @@ namespace kvk {
                 .independentBlend         = VK_TRUE,
                 .fillModeNonSolid         = VK_TRUE,
                 .fragmentStoresAndAtomics = VK_TRUE,
+                .shaderClipDistance       = VK_TRUE,
+                .shaderCullDistance       = VK_TRUE,
                 .shaderInt16              = VK_TRUE,
                 .sparseBinding            = VK_TRUE,
             },
@@ -495,6 +497,7 @@ namespace kvk {
         CHECK_FEATURE(features12, descriptorBindingPartiallyBound);
         CHECK_FEATURE(features12, descriptorBindingVariableDescriptorCount);
         CHECK_FEATURE(features12, shaderSampledImageArrayNonUniformIndexing);
+        CHECK_FEATURE(features12, shaderBufferInt64Atomics);
         CHECK_FEATURE(features12, shaderFloat16);
         CHECK_FEATURE(features12, drawIndirectCount);
         CHECK_FEATURE(features11, shaderDrawParameters);
@@ -504,8 +507,11 @@ namespace kvk {
         CHECK_FEATURE(allDeviceFeatures.features, samplerAnisotropy);
         CHECK_FEATURE(allDeviceFeatures.features, multiDrawIndirect);
         CHECK_FEATURE(allDeviceFeatures.features, drawIndirectFirstInstance);
+        CHECK_FEATURE(allDeviceFeatures.features, shaderClipDistance);
+        CHECK_FEATURE(allDeviceFeatures.features, shaderCullDistance);
         CHECK_FEATURE(allDeviceFeatures.features, fragmentStoresAndAtomics);
         CHECK_FEATURE(allDeviceFeatures.features, shaderInt16);
+        CHECK_FEATURE(allDeviceFeatures.features, shaderInt64);
         CHECK_FEATURE(allDeviceFeatures.features, fillModeNonSolid);
         CHECK_FEATURE(allDeviceFeatures.features, sparseBinding);
 
@@ -537,6 +543,7 @@ namespace kvk {
             .drawIndirectCount                         = VK_TRUE,
             .storageBuffer8BitAccess                   = VK_TRUE,
             .uniformAndStorageBuffer8BitAccess         = VK_TRUE,
+            .shaderBufferInt64Atomics                  = VK_TRUE,
             .shaderFloat16                             = VK_TRUE,
             .shaderInt8                                = VK_TRUE,
             .shaderSampledImageArrayNonUniformIndexing = VK_TRUE,
@@ -557,6 +564,9 @@ namespace kvk {
                 .fillModeNonSolid          = VK_TRUE,
                 .samplerAnisotropy         = VK_TRUE,
                 .fragmentStoresAndAtomics  = VK_TRUE,
+                .shaderClipDistance        = VK_TRUE,
+                .shaderCullDistance        = VK_TRUE,
+                .shaderInt64               = VK_TRUE,
                 .shaderInt16               = VK_TRUE,
                 .sparseBinding             = VK_TRUE,
             },

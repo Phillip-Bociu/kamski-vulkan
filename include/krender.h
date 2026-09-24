@@ -489,6 +489,7 @@ namespace kvk {
         PipelineBuilder&                       setInputTopology(VkPrimitiveTopology topology);
         PipelineBuilder&                       setPrimitiveRestart(bool enable);
         PipelineBuilder&                       setPolygonMode(VkPolygonMode poly);
+        PipelineBuilder&                       addDynamicState(VkDynamicState state);
         PipelineBuilder&                       setLineWidth(float width);
         PipelineBuilder&                       setCullMode(VkCullModeFlags cullMode, VkFrontFace face);
         PipelineBuilder&                       setDepthClamp(bool enable);
@@ -733,6 +734,7 @@ namespace kvk {
     }
 
     VkResult              vkSetDebugUtilsObjectName(VkDevice device, const VkDebugUtilsObjectNameInfoEXT* nameInfo);
+    void                  vkCmdSetPolygonMode(VkCommandBuffer commandBuffer, VkPolygonMode polygonMode);
 
     VkDescriptorSetLayout descriptorSetLayoutFromCache(Cache&               cache,
                                                        const DescriptorSet& set,

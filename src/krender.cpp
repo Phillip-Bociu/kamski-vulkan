@@ -91,6 +91,13 @@ namespace kvk {
         return VK_ERROR_EXTENSION_NOT_PRESENT;
     }
 
+    // Recorded per draw, so it is resolved once at device creation instead of on every call.
+    static PFN_vkCmdSetPolygonModeEXT cmdSetPolygonMode = nullptr;
+
+    void                              vkCmdSetPolygonMode(VkCommandBuffer commandBuffer, VkPolygonMode polygonMode) {
+        cmdSetPolygonMode(commandBuffer, polygonMode);
+    }
+
     ReturnCode createShaderModuleFromMemory(VkShaderModule&      shaderModule,
                                             VkDevice             device,
                                             const std::uint32_t* shaderContents,
@@ -268,7 +275,8 @@ namespace kvk {
                 Physical device selection
           =====================================*/
         const char* desiredDeviceExtensions[] = {
-            VK_KHR_SWAPCHAIN_EXTENSION_NAME
+            VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+            VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME,
         };
 
         state.physicalDevice = VK_NULL_HANDLE;
@@ -437,8 +445,12 @@ namespace kvk {
         }
 
 
+        VkPhysicalDeviceExtendedDynamicState3FeaturesEXT extendedDynamicState3Features = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT,
+        };
         VkPhysicalDeviceVulkan14Features features14 = {
             .sType          = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
+            .pNext          = &extendedDynamicState3Features,
             .pushDescriptor = VK_TRUE,
         };
         VkPhysicalDeviceVulkan11Features features11 = {
@@ -485,6 +497,7 @@ namespace kvk {
         return ReturnCode::UNKNOWN;            \
     }
 
+        CHECK_FEATURE(extendedDynamicState3Features, extendedDynamicState3PolygonMode);
         CHECK_FEATURE(features14, pushDescriptor);
         CHECK_FEATURE(features13, synchronization2);
         CHECK_FEATURE(features13, dynamicRendering);
@@ -517,8 +530,14 @@ namespace kvk {
 
 #undef CHECK_FEATURE
 
+        extendedDynamicState3Features = VkPhysicalDeviceExtendedDynamicState3FeaturesEXT{
+            .sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT,
+            .extendedDynamicState3PolygonMode = VK_TRUE,
+        };
+
         features14 = VkPhysicalDeviceVulkan14Features{
             .sType          = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
+            .pNext          = &extendedDynamicState3Features,
             .pushDescriptor = VK_TRUE,
         };
 
@@ -586,6 +605,7 @@ namespace kvk {
             return ReturnCode::UNKNOWN;
         }
         logDebug("Logical device created");
+        cmdSetPolygonMode = (PFN_vkCmdSetPolygonModeEXT)vkGetDeviceProcAddr(state.device, "vkCmdSetPolygonModeEXT");
 
         state.queues     = new Queue[uniqueQueueFamilies.size()];
         state.queueCount = uniqueQueueFamilies.size();
@@ -1092,6 +1112,13 @@ namespace kvk {
 
     PipelineBuilder& PipelineBuilder::setPolygonMode(VkPolygonMode poly) {
         rasterizer.polygonMode = poly;
+        return *this;
+    }
+
+    PipelineBuilder& PipelineBuilder::addDynamicState(VkDynamicState state) {
+        if(std::find(dynamicState.begin(), dynamicState.end(), state) == dynamicState.end()) {
+            dynamicState.push_back(state);
+        }
         return *this;
     }
 

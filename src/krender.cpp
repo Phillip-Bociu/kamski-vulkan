@@ -607,9 +607,9 @@ namespace kvk {
         logDebug("Logical device created");
         cmdSetPolygonMode = (PFN_vkCmdSetPolygonModeEXT)vkGetDeviceProcAddr(state.device, "vkCmdSetPolygonModeEXT");
 
-        state.queues     = new Queue[uniqueQueueFamilies.size()];
-        state.queueCount = uniqueQueueFamilies.size();
-        std::uint32_t i  = 0;
+        state.queues      = new Queue[uniqueQueueFamilies.size()];
+        state.queueCount  = uniqueQueueFamilies.size();
+        std::uint32_t i   = 0;
         for(std::uint32_t qFam : uniqueQueueFamilies) {
             if(createQueue(state.queues[i],
                            state,
@@ -1323,13 +1323,17 @@ namespace kvk {
         if(pipeline.handle != VK_NULL_HANDLE) {
             vkDestroyPipeline(device, pipeline.handle, nullptr);
         }
-        pipeline.layout = pipelineLayout;
+        pipeline.layout                 = pipelineLayout;
 
-        VkShaderModule                  computeModule;
-        const std::string               computePath    = std::string(shaderNames[SHADER_STAGE_COMPUTE].begin(), shaderNames[SHADER_STAGE_COMPUTE].end()) + std::string(".compute.spv");
-        kvk::ReturnCode                 rc             = kvk::createShaderModuleFromFile(computeModule,
-                                                                                         device,
-                                                                                         computePath.c_str());
+        VkShaderModule    computeModule = VK_NULL_HANDLE;
+        const std::string computePath   = std::string(shaderNames[SHADER_STAGE_COMPUTE].begin(), shaderNames[SHADER_STAGE_COMPUTE].end()) + std::string(".compute.spv");
+        kvk::ReturnCode   rc            = kvk::createShaderModuleFromFile(computeModule,
+                                                                          device,
+                                                                          computePath.c_str());
+        if(rc != kvk::ReturnCode::OK) {
+            logError("Could not create shader module from %s: %d", computePath.c_str(), rc);
+            return rc;
+        }
 
         VkPipelineShaderStageCreateInfo shaderStages[] = {
             {

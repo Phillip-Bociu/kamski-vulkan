@@ -593,38 +593,43 @@ namespace kvk {
 
 
     struct RendererState {
-        std::uint32_t            currentFrame;
+        std::uint32_t                                 currentFrame;
 
-        VmaAllocator             allocator;
+        VmaAllocator                                  allocator;
 
-        VkInstance               instance;
-        VkDevice                 device;
-        VkPhysicalDevice         physicalDevice;
-        std::uint32_t            transferFamilyIndex;
-        std::uint32_t            graphicsFamilyIndex;
-        std::uint32_t            presentFamilyIndex;
-        std::uint32_t            computeFamilyIndex;
-        VkPhysicalDeviceLimits   limits;
+        VkInstance                                    instance;
+        VkDevice                                      device;
+        VkPhysicalDevice                              physicalDevice;
+        std::uint32_t                                 transferFamilyIndex;
+        std::uint32_t                                 graphicsFamilyIndex;
+        std::uint32_t                                 presentFamilyIndex;
+        std::uint32_t                                 computeFamilyIndex;
 
-        Queue*                   queues;
-        std::uint32_t            queueCount;
+        Queue*                                        queues;
+        std::uint32_t                                 queueCount;
 
-        VkSurfaceKHR             surface;
+        VkSurfaceKHR                                  surface;
 
-        DescriptorAllocator      descriptors;
-        FrameData                frames[MAX_IN_FLIGHT_FRAMES];
+        DescriptorAllocator                           descriptors;
+        FrameData                                     frames[MAX_IN_FLIGHT_FRAMES];
 
         //
         // Swapchain stuff
         //
-        VkSwapchainKHR           swapchain;
-        std::uint32_t            swapchainImageCount;
-        std::vector<VkImage>     swapchainImages;
-        std::vector<VkImageView> swapchainImageViews;
-        std::vector<VkSemaphore> renderFinishedSemaphores;
-        VkExtent2D               swapchainExtent;
-        VkSurfaceFormatKHR       swapchainImageFormat;
-        VkPresentModeKHR         swapchainPresentMode;
+        VkSwapchainKHR                                swapchain;
+        std::uint32_t                                 swapchainImageCount;
+        std::vector<VkImage>                          swapchainImages;
+        std::vector<VkImageView>                      swapchainImageViews;
+        std::vector<VkSemaphore>                      renderFinishedSemaphores;
+        VkExtent2D                                    swapchainExtent;
+        VkSurfaceFormatKHR                            swapchainImageFormat;
+        VkPresentModeKHR                              swapchainPresentMode;
+
+        //
+        // Limits
+        //
+        VkPhysicalDeviceLimits                        limits;
+        VkPhysicalDeviceSubgroupSizeControlProperties subgroupProps;
     };
 
 

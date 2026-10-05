@@ -293,11 +293,18 @@ namespace kvk {
         vkEnumeratePhysicalDevices(state.instance, &deviceCount, physicalDevices.data());
 
         for(const VkPhysicalDevice pd : physicalDevices) {
-            VkPhysicalDeviceProperties prop;
-            vkGetPhysicalDeviceProperties(pd, &prop);
-            logDebug("GPU: %s", prop.deviceName);
+            VkPhysicalDeviceSubgroupSizeControlProperties subgroupProps = {
+                .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_PROPERTIES
+            };
 
-            if(prop.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+            VkPhysicalDeviceProperties2 prop2 = {
+                .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+                .pNext = &subgroupProps
+            };
+            vkGetPhysicalDeviceProperties2(pd, &prop2);
+            logDebug("GPU: %s", prop2.properties.deviceName);
+
+            if(prop2.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
                 bool          graphicsFamilyFound = false;
                 bool          presentFamilyFound  = false;
                 bool          computeFamilyFound  = false;
@@ -397,7 +404,11 @@ namespace kvk {
                 if(!dedicatedTransfer) {
                     logWarning("No dedidcated transfer queue family present");
                 }
+
                 state.physicalDevice = pd;
+                state.limits         = prop2.properties.limits;
+                state.subgroupProps  = subgroupProps;
+
                 break;
             }
         }
@@ -970,7 +981,7 @@ namespace kvk {
         entry.constantID = constantId;
 
         specializationConstantData[shaderStage].resize(specializationConstantData[shaderStage].size() + size);
-        memcpy(specializationConstantData[shaderStage].data(), data, size);
+        memcpy(specializationConstantData[shaderStage].data() + entry.offset, data, size);
 
         auto toFind = std::find_if(specializationConstants[shaderStage].begin(),
                                    specializationConstants[shaderStage].end(),

@@ -505,6 +505,7 @@ namespace kvk {
         PipelineBuilder&                       enableDepthTest(bool depthWriteEnable, VkCompareOp op);
         PipelineBuilder&                       enableDepthBounds(float minBounds, float maxBounds);
         PipelineBuilder&                       enableStencilTest(VkCompareOp compareOp, bool enableWriting);
+        PipelineBuilder&                       enableStencilTest(const VkStencilOpState& front, const VkStencilOpState& back);
         PipelineBuilder&                       enableBlendingAdditive();
         PipelineBuilder&                       enableBlendingAlpha();
 

@@ -1080,6 +1080,13 @@ namespace kvk {
         return *this;
     }
 
+    PipelineBuilder& PipelineBuilder::enableStencilTest(const VkStencilOpState& front, const VkStencilOpState& back) {
+        depthStencil.stencilTestEnable = VK_TRUE;
+        depthStencil.front             = front;
+        depthStencil.back              = back;
+        return *this;
+    }
+
     PipelineBuilder& PipelineBuilder::addShaders(std::string_view name, VkShaderStageFlags stageFlags) {
         if(stageFlags & VK_SHADER_STAGE_VERTEX_BIT) {
             shaderNames[SHADER_STAGE_VERTEX] = name;

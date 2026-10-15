@@ -455,7 +455,6 @@ namespace kvk {
             queueCreateInfos.push_back(queueCreateInfo);
         }
 
-
         VkPhysicalDeviceExtendedDynamicState3FeaturesEXT extendedDynamicState3Features = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT,
         };
@@ -499,6 +498,7 @@ namespace kvk {
             },
         };
 
+
         vkGetPhysicalDeviceFeatures2(state.physicalDevice,
                                      &allDeviceFeatures);
 
@@ -527,6 +527,7 @@ namespace kvk {
         CHECK_FEATURE(features11, shaderDrawParameters);
         CHECK_FEATURE(features11, storageBuffer16BitAccess);
         CHECK_FEATURE(features11, uniformAndStorageBuffer16BitAccess);
+        CHECK_FEATURE(features13, maintenance4);
         CHECK_FEATURE(allDeviceFeatures.features, independentBlend);
         CHECK_FEATURE(allDeviceFeatures.features, samplerAnisotropy);
         CHECK_FEATURE(allDeviceFeatures.features, multiDrawIndirect);
@@ -564,7 +565,8 @@ namespace kvk {
             .sType            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
             .pNext            = &features11,
             .synchronization2 = VK_TRUE,
-            .dynamicRendering = VK_TRUE
+            .dynamicRendering = VK_TRUE,
+            .maintenance4     = VK_TRUE
         };
 
         features12 = VkPhysicalDeviceVulkan12Features{
@@ -1502,12 +1504,20 @@ namespace kvk {
 
         VkImageAspectFlags aspect;
         switch(format) {
-        case VK_FORMAT_D24_UNORM_S8_UINT: {
+        case VK_FORMAT_D32_SFLOAT_S8_UINT:
+        case VK_FORMAT_D24_UNORM_S8_UINT:
+        case VK_FORMAT_D16_UNORM_S8_UINT: {
             aspect = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
         } break;
 
+        case VK_FORMAT_D16_UNORM:
+        case VK_FORMAT_X8_D24_UNORM_PACK32:
         case VK_FORMAT_D32_SFLOAT: {
             aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
+        } break;
+
+        case VK_FORMAT_S8_UINT: {
+            aspect = VK_IMAGE_ASPECT_STENCIL_BIT;
         } break;
 
         default: {

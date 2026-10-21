@@ -2104,7 +2104,7 @@ namespace kvk {
             return nullptr;
         } else if(result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
             logError("Something gone wrong: %d", result);
-            return nullptr;
+            assert(false);
         }
 
         //

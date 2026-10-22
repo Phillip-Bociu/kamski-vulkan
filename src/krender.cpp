@@ -277,6 +277,7 @@ namespace kvk {
         const char* desiredDeviceExtensions[] = {
             VK_KHR_SWAPCHAIN_EXTENSION_NAME,
             VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME,
+            VK_KHR_SHADER_MAXIMAL_RECONVERGENCE_EXTENSION_NAME,
         };
 
         state.physicalDevice = VK_NULL_HANDLE;
@@ -455,8 +456,12 @@ namespace kvk {
             queueCreateInfos.push_back(queueCreateInfo);
         }
 
+        VkPhysicalDeviceShaderMaximalReconvergenceFeaturesKHR maximalReconvergenceFeatures = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_MAXIMAL_RECONVERGENCE_FEATURES_KHR,
+        };
         VkPhysicalDeviceExtendedDynamicState3FeaturesEXT extendedDynamicState3Features = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT,
+            .pNext = &maximalReconvergenceFeatures
         };
         VkPhysicalDeviceVulkan14Features features14 = {
             .sType          = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
@@ -508,6 +513,7 @@ namespace kvk {
         return ReturnCode::UNKNOWN;            \
     }
 
+        CHECK_FEATURE(maximalReconvergenceFeatures, shaderMaximalReconvergence);
         CHECK_FEATURE(extendedDynamicState3Features, extendedDynamicState3PolygonMode);
         CHECK_FEATURE(features14, pushDescriptor);
         CHECK_FEATURE(features13, synchronization2);
@@ -541,6 +547,11 @@ namespace kvk {
         CHECK_FEATURE(allDeviceFeatures.features, sparseBinding);
 
 #undef CHECK_FEATURE
+
+        maximalReconvergenceFeatures = VkPhysicalDeviceShaderMaximalReconvergenceFeaturesKHR{
+            .sType                      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_MAXIMAL_RECONVERGENCE_FEATURES_KHR,
+            .shaderMaximalReconvergence = VK_TRUE
+        };
 
         extendedDynamicState3Features = VkPhysicalDeviceExtendedDynamicState3FeaturesEXT{
             .sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT,

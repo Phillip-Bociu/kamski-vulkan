@@ -47,7 +47,7 @@
     } while(0)
 
 namespace kvk {
-    static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 1;
+    static constexpr std::uint32_t MAX_IN_FLIGHT_FRAMES = 2;
 
     struct InitSettings {
         const char*   appName;
@@ -217,6 +217,7 @@ namespace kvk {
             struct {
                 VkImageView      image;
                 VkDescriptorType imageType;
+                std::uint32_t    imageCount;
             };
             struct {
                 VkBuffer         buffer;
@@ -233,7 +234,6 @@ namespace kvk {
             IMAGE,
             BUFFER,
             SAMPLER,
-            IMAGES,
         } type = NONE;
     };
 
@@ -325,6 +325,7 @@ namespace kvk {
 
                 case kvk::Descriptor::IMAGE: {
                     retval = (retval << 1) ^ std::hash<std::uint32_t>()(s.descriptors[i].imageType);
+                    retval = (retval << 1) ^ std::hash<std::uint32_t>()(s.descriptors[i].imageCount);
                 } break;
 
                 case kvk::Descriptor::SAMPLER: {
@@ -333,11 +334,6 @@ namespace kvk {
 
                 case kvk::Descriptor::BUFFER: {
                     retval = (retval << 1) ^ std::hash<std::uint32_t>()(s.descriptors[i].bufferType);
-                } break;
-
-                case kvk::Descriptor::IMAGES: {
-                    retval = (retval << 1) ^ std::hash<std::uint32_t>()(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
-                    retval = (retval << 1) ^ std::hash<std::uint32_t>()(std::numeric_limits<u16>::max());
                 } break;
 
                 case kvk::Descriptor::NONE: {
@@ -467,7 +463,6 @@ namespace kvk {
         };
 
         std::string_view                       shaderNames[SHADER_STAGE_COUNT];
-        std::string_view                       entryPointNames[SHADER_STAGE_COUNT];
         std::vector<VkSpecializationMapEntry>  specializationConstants[SHADER_STAGE_COUNT];
         std::vector<std::uint8_t>              specializationConstantData[SHADER_STAGE_COUNT];
 
@@ -489,11 +484,12 @@ namespace kvk {
         VkPipelineRasterizationStateCreateInfo rasterizer;
 
         PipelineBuilder&                       setPushDescriptor(u32 setIndex);
-        PipelineBuilder&                       addShaders(std::string_view name, VkShaderStageFlags stageFlags, std::string_view entryPoint = "main");
+        PipelineBuilder&                       addShaders(std::string_view name, VkShaderStageFlags stageFlags);
         PipelineBuilder&                       clearShaders(VkShaderStageFlags stageFlags = VK_SHADER_STAGE_ALL);
         PipelineBuilder&                       setInputTopology(VkPrimitiveTopology topology);
         PipelineBuilder&                       setPrimitiveRestart(bool enable);
         PipelineBuilder&                       setPolygonMode(VkPolygonMode poly);
+        PipelineBuilder&                       addDynamicState(VkDynamicState state);
         PipelineBuilder&                       setLineWidth(float width);
         PipelineBuilder&                       setCullMode(VkCullModeFlags cullMode, VkFrontFace face);
         PipelineBuilder&                       setDepthClamp(bool enable);
@@ -509,6 +505,7 @@ namespace kvk {
         PipelineBuilder&                       enableDepthTest(bool depthWriteEnable, VkCompareOp op);
         PipelineBuilder&                       enableDepthBounds(float minBounds, float maxBounds);
         PipelineBuilder&                       enableStencilTest(VkCompareOp compareOp, bool enableWriting);
+        PipelineBuilder&                       enableStencilTest(const VkStencilOpState& front, const VkStencilOpState& back);
         PipelineBuilder&                       enableBlendingAdditive();
         PipelineBuilder&                       enableBlendingAlpha();
 
@@ -597,45 +594,47 @@ namespace kvk {
 
 
     struct RendererState {
-        std::uint32_t            currentFrame;
+        std::uint32_t                                 currentFrame;
 
-        VmaAllocator             allocator;
+        VmaAllocator                                  allocator;
 
-        VkInstance               instance;
-        VkDevice                 device;
-        VkPhysicalDevice         physicalDevice;
-        std::uint32_t            transferFamilyIndex;
-        std::uint32_t            graphicsFamilyIndex;
-        std::uint32_t            presentFamilyIndex;
-        std::uint32_t            computeFamilyIndex;
-        VkPhysicalDeviceLimits   limits;
+        VkInstance                                    instance;
+        VkDevice                                      device;
+        VkPhysicalDevice                              physicalDevice;
+        std::uint32_t                                 transferFamilyIndex;
+        std::uint32_t                                 graphicsFamilyIndex;
+        std::uint32_t                                 presentFamilyIndex;
+        std::uint32_t                                 computeFamilyIndex;
 
-        Queue*                   queues;
-        std::uint32_t            queueCount;
+        Queue*                                        queues;
+        std::uint32_t                                 queueCount;
 
-        VkSurfaceKHR             surface;
+        VkSurfaceKHR                                  surface;
 
-        DescriptorAllocator      descriptors;
-        FrameData                frames[MAX_IN_FLIGHT_FRAMES];
+        DescriptorAllocator                           descriptors;
+        FrameData                                     frames[MAX_IN_FLIGHT_FRAMES];
 
         //
         // Swapchain stuff
         //
-        VkSwapchainKHR           swapchain;
-        std::uint32_t            swapchainImageCount;
-        std::vector<VkImage>     swapchainImages;
-        std::vector<VkImageView> swapchainImageViews;
-        std::vector<VkSemaphore> renderFinishedSemaphores;
-        VkExtent2D               swapchainExtent;
-        VkSurfaceFormatKHR       swapchainImageFormat;
-        VkPresentModeKHR         swapchainPresentMode;
+        VkSwapchainKHR                                swapchain;
+        std::uint32_t                                 swapchainImageCount;
+        std::vector<VkImage>                          swapchainImages;
+        std::vector<VkImageView>                      swapchainImageViews;
+        std::vector<VkSemaphore>                      renderFinishedSemaphores;
+        VkExtent2D                                    swapchainExtent;
+        VkSurfaceFormatKHR                            swapchainImageFormat;
+        VkPresentModeKHR                              swapchainPresentMode;
+
+        //
+        // Limits
+        //
+        VkPhysicalDeviceLimits                        limits;
+        VkPhysicalDeviceSubgroupSizeControlProperties subgroupProps;
     };
 
 
     ReturnCode init(RendererState& state, const InitSettings* settings);
-
-    ReturnCode createShaderModuleFromFile(VkShaderModule& shaderModule, VkDevice device, const char* shaderPath);
-    ReturnCode createShaderModuleFromMemory(VkShaderModule& shaderModule, VkDevice device, const std::uint32_t* shaderContents, const std::uint64_t shaderSize);
 
     FrameData* startFrame(RendererState& state, std::uint32_t& frameIndex);
 
@@ -738,6 +737,7 @@ namespace kvk {
     }
 
     VkResult              vkSetDebugUtilsObjectName(VkDevice device, const VkDebugUtilsObjectNameInfoEXT* nameInfo);
+    void                  vkCmdSetPolygonMode(VkCommandBuffer commandBuffer, VkPolygonMode polygonMode);
 
     VkDescriptorSetLayout descriptorSetLayoutFromCache(Cache&               cache,
                                                        const DescriptorSet& set,

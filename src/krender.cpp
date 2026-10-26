@@ -1,4 +1,3 @@
-#include "spirv_reflect.h"
 #include "vulkan/vulkan_core.h"
 #include <cstdint>
 #include <limits>
@@ -92,30 +91,15 @@ namespace kvk {
         return VK_ERROR_EXTENSION_NOT_PRESENT;
     }
 
-    ReturnCode createShaderModuleFromMemory(VkShaderModule&      shaderModule,
-                                            VkDevice             device,
-                                            const std::uint32_t* shaderContents,
-                                            const std::uint64_t  shaderSize) {
-        KAMSKI_PROFILE();
-        VkShaderModuleCreateInfo createInfo = {
-            .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-            .codeSize = shaderSize,
-            .pCode    = shaderContents,
-        };
+    // Recorded per draw, so it is resolved once at device creation instead of on every call.
+    static PFN_vkCmdSetPolygonModeEXT cmdSetPolygonMode = nullptr;
 
-        if(vkCreateShaderModule(device,
-                                &createInfo,
-                                nullptr,
-                                &shaderModule) != VK_SUCCESS) {
-            logError("Could not create shader module");
-            return ReturnCode::UNKNOWN;
-        }
-        return ReturnCode::OK;
+    void                              vkCmdSetPolygonMode(VkCommandBuffer commandBuffer, VkPolygonMode polygonMode) {
+        cmdSetPolygonMode(commandBuffer, polygonMode);
     }
 
-    ReturnCode createShaderModuleFromFile(VkShaderModule& shaderModule,
-                                          VkDevice        device,
-                                          const char*     shaderPath) {
+    ReturnCode readShaderFile(vector<std::uint32_t>& data,
+                              const char*            shaderPath) {
         KAMSKI_PROFILE();
         std::ifstream vs(shaderPath, std::ios::ate | std::ios::binary);
         if(!vs.is_open()) {
@@ -123,16 +107,12 @@ namespace kvk {
             return ReturnCode::FILE_NOT_FOUND;
         }
 
-        const std::uint64_t        size = vs.tellg();
-        std::vector<std::uint32_t> vsData(size / 4);
+        const std::uint64_t size = vs.tellg();
+        data.resize(size / 4);
         vs.seekg(0);
-        vs.read((char*)vsData.data(), size);
+        vs.read((char*)data.data(), size);
 
-        ReturnCode rc = createShaderModuleFromMemory(shaderModule,
-                                                     device,
-                                                     vsData.data(),
-                                                     size);
-        return rc;
+        return ReturnCode::OK;
     }
 
     ReturnCode init(RendererState& state, const InitSettings* settings) {
@@ -269,7 +249,9 @@ namespace kvk {
                 Physical device selection
           =====================================*/
         const char* desiredDeviceExtensions[] = {
-            VK_KHR_SWAPCHAIN_EXTENSION_NAME
+            VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+            VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME,
+            VK_KHR_SHADER_MAXIMAL_RECONVERGENCE_EXTENSION_NAME,
         };
 
         state.physicalDevice = VK_NULL_HANDLE;
@@ -286,11 +268,18 @@ namespace kvk {
         vkEnumeratePhysicalDevices(state.instance, &deviceCount, physicalDevices.data());
 
         for(const VkPhysicalDevice pd : physicalDevices) {
-            VkPhysicalDeviceProperties prop;
-            vkGetPhysicalDeviceProperties(pd, &prop);
-            logDebug("GPU: %s", prop.deviceName);
+            VkPhysicalDeviceSubgroupSizeControlProperties subgroupProps = {
+                .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_PROPERTIES
+            };
 
-            if(prop.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+            VkPhysicalDeviceProperties2 prop2 = {
+                .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+                .pNext = &subgroupProps
+            };
+            vkGetPhysicalDeviceProperties2(pd, &prop2);
+            logDebug("GPU: %s", prop2.properties.deviceName);
+
+            if(prop2.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
                 bool          graphicsFamilyFound = false;
                 bool          presentFamilyFound  = false;
                 bool          computeFamilyFound  = false;
@@ -390,7 +379,11 @@ namespace kvk {
                 if(!dedicatedTransfer) {
                     logWarning("No dedidcated transfer queue family present");
                 }
+
                 state.physicalDevice = pd;
+                state.limits         = prop2.properties.limits;
+                state.subgroupProps  = subgroupProps;
+
                 break;
             }
         }
@@ -437,9 +430,16 @@ namespace kvk {
             queueCreateInfos.push_back(queueCreateInfo);
         }
 
-
+        VkPhysicalDeviceShaderMaximalReconvergenceFeaturesKHR maximalReconvergenceFeatures = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_MAXIMAL_RECONVERGENCE_FEATURES_KHR,
+        };
+        VkPhysicalDeviceExtendedDynamicState3FeaturesEXT extendedDynamicState3Features = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT,
+            .pNext = &maximalReconvergenceFeatures
+        };
         VkPhysicalDeviceVulkan14Features features14 = {
             .sType          = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
+            .pNext          = &extendedDynamicState3Features,
             .pushDescriptor = VK_TRUE,
         };
         VkPhysicalDeviceVulkan11Features features11 = {
@@ -470,10 +470,13 @@ namespace kvk {
                 .independentBlend         = VK_TRUE,
                 .fillModeNonSolid         = VK_TRUE,
                 .fragmentStoresAndAtomics = VK_TRUE,
+                .shaderClipDistance       = VK_TRUE,
+                .shaderCullDistance       = VK_TRUE,
                 .shaderInt16              = VK_TRUE,
                 .sparseBinding            = VK_TRUE,
             },
         };
+
 
         vkGetPhysicalDeviceFeatures2(state.physicalDevice,
                                      &allDeviceFeatures);
@@ -484,6 +487,8 @@ namespace kvk {
         return ReturnCode::UNKNOWN;            \
     }
 
+        CHECK_FEATURE(maximalReconvergenceFeatures, shaderMaximalReconvergence);
+        CHECK_FEATURE(extendedDynamicState3Features, extendedDynamicState3PolygonMode);
         CHECK_FEATURE(features14, pushDescriptor);
         CHECK_FEATURE(features13, synchronization2);
         CHECK_FEATURE(features13, dynamicRendering);
@@ -496,24 +501,40 @@ namespace kvk {
         CHECK_FEATURE(features12, descriptorBindingPartiallyBound);
         CHECK_FEATURE(features12, descriptorBindingVariableDescriptorCount);
         CHECK_FEATURE(features12, shaderSampledImageArrayNonUniformIndexing);
+        CHECK_FEATURE(features12, shaderBufferInt64Atomics);
         CHECK_FEATURE(features12, shaderFloat16);
         CHECK_FEATURE(features12, drawIndirectCount);
         CHECK_FEATURE(features11, shaderDrawParameters);
         CHECK_FEATURE(features11, storageBuffer16BitAccess);
         CHECK_FEATURE(features11, uniformAndStorageBuffer16BitAccess);
+        CHECK_FEATURE(features13, maintenance4);
         CHECK_FEATURE(allDeviceFeatures.features, independentBlend);
         CHECK_FEATURE(allDeviceFeatures.features, samplerAnisotropy);
         CHECK_FEATURE(allDeviceFeatures.features, multiDrawIndirect);
         CHECK_FEATURE(allDeviceFeatures.features, drawIndirectFirstInstance);
+        CHECK_FEATURE(allDeviceFeatures.features, shaderClipDistance);
+        CHECK_FEATURE(allDeviceFeatures.features, shaderCullDistance);
         CHECK_FEATURE(allDeviceFeatures.features, fragmentStoresAndAtomics);
         CHECK_FEATURE(allDeviceFeatures.features, shaderInt16);
+        CHECK_FEATURE(allDeviceFeatures.features, shaderInt64);
         CHECK_FEATURE(allDeviceFeatures.features, fillModeNonSolid);
         CHECK_FEATURE(allDeviceFeatures.features, sparseBinding);
 
 #undef CHECK_FEATURE
 
+        maximalReconvergenceFeatures = VkPhysicalDeviceShaderMaximalReconvergenceFeaturesKHR{
+            .sType                      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_MAXIMAL_RECONVERGENCE_FEATURES_KHR,
+            .shaderMaximalReconvergence = VK_TRUE
+        };
+
+        extendedDynamicState3Features = VkPhysicalDeviceExtendedDynamicState3FeaturesEXT{
+            .sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT,
+            .extendedDynamicState3PolygonMode = VK_TRUE,
+        };
+
         features14 = VkPhysicalDeviceVulkan14Features{
             .sType          = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
+            .pNext          = &extendedDynamicState3Features,
             .pushDescriptor = VK_TRUE,
         };
 
@@ -529,7 +550,8 @@ namespace kvk {
             .sType            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
             .pNext            = &features11,
             .synchronization2 = VK_TRUE,
-            .dynamicRendering = VK_TRUE
+            .dynamicRendering = VK_TRUE,
+            .maintenance4     = VK_TRUE
         };
 
         features12 = VkPhysicalDeviceVulkan12Features{
@@ -538,6 +560,7 @@ namespace kvk {
             .drawIndirectCount                         = VK_TRUE,
             .storageBuffer8BitAccess                   = VK_TRUE,
             .uniformAndStorageBuffer8BitAccess         = VK_TRUE,
+            .shaderBufferInt64Atomics                  = VK_TRUE,
             .shaderFloat16                             = VK_TRUE,
             .shaderInt8                                = VK_TRUE,
             .shaderSampledImageArrayNonUniformIndexing = VK_TRUE,
@@ -558,6 +581,9 @@ namespace kvk {
                 .fillModeNonSolid          = VK_TRUE,
                 .samplerAnisotropy         = VK_TRUE,
                 .fragmentStoresAndAtomics  = VK_TRUE,
+                .shaderClipDistance        = VK_TRUE,
+                .shaderCullDistance        = VK_TRUE,
+                .shaderInt64               = VK_TRUE,
                 .shaderInt16               = VK_TRUE,
                 .sparseBinding             = VK_TRUE,
             },
@@ -577,10 +603,11 @@ namespace kvk {
             return ReturnCode::UNKNOWN;
         }
         logDebug("Logical device created");
+        cmdSetPolygonMode = (PFN_vkCmdSetPolygonModeEXT)vkGetDeviceProcAddr(state.device, "vkCmdSetPolygonModeEXT");
 
-        state.queues     = new Queue[uniqueQueueFamilies.size()];
-        state.queueCount = uniqueQueueFamilies.size();
-        std::uint32_t i  = 0;
+        state.queues      = new Queue[uniqueQueueFamilies.size()];
+        state.queueCount  = uniqueQueueFamilies.size();
+        std::uint32_t i   = 0;
         for(std::uint32_t qFam : uniqueQueueFamilies) {
             if(createQueue(state.queues[i],
                            state,
@@ -838,13 +865,13 @@ namespace kvk {
     PipelineBuilder::PipelineBuilder() {
         vertexInputAttributesSize = 0;
         multisample               = {
-                          .sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-                          .rasterizationSamples  = VK_SAMPLE_COUNT_1_BIT,
-                          .sampleShadingEnable   = VK_FALSE,
-                          .minSampleShading      = 1.0f,
-                          .pSampleMask           = nullptr,
-                          .alphaToCoverageEnable = VK_FALSE,
-                          .alphaToOneEnable      = VK_FALSE,
+            .sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+            .rasterizationSamples  = VK_SAMPLE_COUNT_1_BIT,
+            .sampleShadingEnable   = VK_FALSE,
+            .minSampleShading      = 1.0f,
+            .pSampleMask           = nullptr,
+            .alphaToCoverageEnable = VK_FALSE,
+            .alphaToOneEnable      = VK_FALSE,
         };
 
         viewportState = {
@@ -941,7 +968,7 @@ namespace kvk {
         entry.constantID = constantId;
 
         specializationConstantData[shaderStage].resize(specializationConstantData[shaderStage].size() + size);
-        memcpy(specializationConstantData[shaderStage].data(), data, size);
+        memcpy(specializationConstantData[shaderStage].data() + entry.offset, data, size);
 
         auto toFind = std::find_if(specializationConstants[shaderStage].begin(),
                                    specializationConstants[shaderStage].end(),
@@ -1028,51 +1055,51 @@ namespace kvk {
     PipelineBuilder& PipelineBuilder::enableStencilTest(VkCompareOp compareOp, bool enableWriting) {
         depthStencil.stencilTestEnable = VK_TRUE;
         depthStencil.back              = {
-                         .failOp      = VK_STENCIL_OP_REPLACE,
-                         .passOp      = VK_STENCIL_OP_REPLACE,
-                         .depthFailOp = VK_STENCIL_OP_REPLACE,
-                         .compareOp   = compareOp,
-                         .compareMask = 0xff,
-                         .writeMask   = static_cast<uint32_t>(enableWriting ? 0xff : 0),
-                         .reference   = 1
+            .failOp      = VK_STENCIL_OP_REPLACE,
+            .passOp      = VK_STENCIL_OP_REPLACE,
+            .depthFailOp = VK_STENCIL_OP_REPLACE,
+            .compareOp   = compareOp,
+            .compareMask = 0xff,
+            .writeMask   = static_cast<uint32_t>(enableWriting ? 0xff : 0),
+            .reference   = 1
         };
         depthStencil.front = depthStencil.back;
         return *this;
     }
 
-    PipelineBuilder& PipelineBuilder::addShaders(std::string_view name, VkShaderStageFlags stageFlags, std::string_view entryPoint) {
+    PipelineBuilder& PipelineBuilder::enableStencilTest(const VkStencilOpState& front, const VkStencilOpState& back) {
+        depthStencil.stencilTestEnable = VK_TRUE;
+        depthStencil.front             = front;
+        depthStencil.back              = back;
+        return *this;
+    }
+
+    PipelineBuilder& PipelineBuilder::addShaders(std::string_view name, VkShaderStageFlags stageFlags) {
         if(stageFlags & VK_SHADER_STAGE_VERTEX_BIT) {
-            shaderNames[SHADER_STAGE_VERTEX]     = name;
-            entryPointNames[SHADER_STAGE_VERTEX] = entryPoint;
+            shaderNames[SHADER_STAGE_VERTEX] = name;
         }
 
         if(stageFlags & VK_SHADER_STAGE_FRAGMENT_BIT) {
-            shaderNames[SHADER_STAGE_FRAGMENT]     = name;
-            entryPointNames[SHADER_STAGE_FRAGMENT] = entryPoint;
+            shaderNames[SHADER_STAGE_FRAGMENT] = name;
         }
 
         if(stageFlags & VK_SHADER_STAGE_COMPUTE_BIT) {
-            shaderNames[SHADER_STAGE_COMPUTE]     = name;
-            entryPointNames[SHADER_STAGE_COMPUTE] = entryPoint;
+            shaderNames[SHADER_STAGE_COMPUTE] = name;
         }
-
         return *this;
     }
 
     PipelineBuilder& PipelineBuilder::clearShaders(VkShaderStageFlags stageFlags) {
         if(stageFlags & VK_SHADER_STAGE_VERTEX_BIT) {
-            shaderNames[SHADER_STAGE_VERTEX]     = {};
-            entryPointNames[SHADER_STAGE_VERTEX] = {};
+            shaderNames[SHADER_STAGE_VERTEX] = {};
         }
 
         if(stageFlags & VK_SHADER_STAGE_FRAGMENT_BIT) {
-            shaderNames[SHADER_STAGE_FRAGMENT]     = {};
-            entryPointNames[SHADER_STAGE_FRAGMENT] = {};
+            shaderNames[SHADER_STAGE_FRAGMENT] = {};
         }
 
         if(stageFlags & VK_SHADER_STAGE_COMPUTE_BIT) {
-            shaderNames[SHADER_STAGE_COMPUTE]     = {};
-            entryPointNames[SHADER_STAGE_COMPUTE] = {};
+            shaderNames[SHADER_STAGE_COMPUTE] = {};
         }
 
         return *this;
@@ -1090,6 +1117,13 @@ namespace kvk {
 
     PipelineBuilder& PipelineBuilder::setPolygonMode(VkPolygonMode poly) {
         rasterizer.polygonMode = poly;
+        return *this;
+    }
+
+    PipelineBuilder& PipelineBuilder::addDynamicState(VkDynamicState state) {
+        if(std::find(dynamicState.begin(), dynamicState.end(), state) == dynamicState.end()) {
+            dynamicState.push_back(state);
+        }
         return *this;
     }
 
@@ -1158,39 +1192,61 @@ namespace kvk {
 
         vector<VkDescriptorSetLayout> descriptorSetLayouts;
         vector<DescriptorSet>         descriptorSets;
-        VkShaderModule                vertexModule;
-        VkShaderModule                fragmentModule;
+
+        VkShaderModuleCreateInfo      vertexModuleCreateInfo;
+        VkShaderModuleCreateInfo      fragmentModuleCreateInfo;
+
+        vector<uint32_t>              vertexSpirv;
+        vector<uint32_t>              fragmentSpirv;
+
         const std::string             vertexPath        = std::string(shaderNames[SHADER_STAGE_VERTEX].begin(), shaderNames[SHADER_STAGE_VERTEX].end()) + std::string(".vertex.spv");
         const std::string             fragmentPath      = std::string(shaderNames[SHADER_STAGE_FRAGMENT].begin(), shaderNames[SHADER_STAGE_FRAGMENT].end()) + std::string(".pixel.spv");
         VkPushConstantRange           pushConstantRange = {};
-        kvk::ReturnCode               rc                = createShaderModuleFromFile(vertexModule,
-                                                                                     device,
-                                                                                     vertexPath.c_str());
+
+        kvk::ReturnCode               rc                = readShaderFile(vertexSpirv,
+                                                                         vertexPath.c_str());
         if(rc != kvk::ReturnCode::OK) {
             logError("Could not create shader module from %s: %d", vertexPath.c_str(), rc);
             return rc;
         }
-        rc = createShaderModuleFromFile(fragmentModule,
-                                        device,
-                                        fragmentPath.c_str());
-        if(rc != kvk::ReturnCode::OK) {
-            logError("Could not create shader module from %s: %d", fragmentPath.c_str(), rc);
-            return rc;
+
+        vertexModuleCreateInfo = {
+            .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+            .codeSize = vertexSpirv.size() * 4,
+            .pCode    = vertexSpirv.data()
+        };
+
+        // A pipeline without a fragment stage (e.g. a depth-only pass) has no module to load.
+        if(!shaderNames[SHADER_STAGE_FRAGMENT].empty()) {
+            kvk::ReturnCode rc = readShaderFile(fragmentSpirv,
+                                                fragmentPath.c_str());
+            if(rc != kvk::ReturnCode::OK) {
+                logError("Could not create shader module from %s: %d", fragmentPath.c_str(), rc);
+                return rc;
+            }
+
+            fragmentModuleCreateInfo = {
+                .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+                .codeSize = fragmentSpirv.size() * 4,
+                .pCode    = fragmentSpirv.data()
+            };
         }
 
         VkPipelineShaderStageCreateInfo shaderStages[] = {
             {
                 .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                .pNext  = &vertexModuleCreateInfo,
                 .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-                .module = vertexModule,
-                .pName  = entryPointNames[SHADER_STAGE_VERTEX].data(),
+                .module = VK_NULL_HANDLE,
+                .pName  = "main",
             },
 
             {
                 .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                .pNext  = &fragmentModuleCreateInfo,
                 .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-                .module = shaderNames[SHADER_STAGE_FRAGMENT].empty() ? VK_NULL_HANDLE : fragmentModule,
-                .pName  = entryPointNames[SHADER_STAGE_FRAGMENT].data(),
+                .module = VK_NULL_HANDLE,
+                .pName  = "main",
             }
         };
 
@@ -1291,20 +1347,31 @@ namespace kvk {
         if(pipeline.handle != VK_NULL_HANDLE) {
             vkDestroyPipeline(device, pipeline.handle, nullptr);
         }
-        pipeline.layout = pipelineLayout;
+        pipeline.layout                      = pipelineLayout;
 
-        VkShaderModule                  computeModule;
-        const std::string               computePath    = std::string(shaderNames[SHADER_STAGE_COMPUTE].begin(), shaderNames[SHADER_STAGE_COMPUTE].end()) + std::string(".compute.spv");
-        kvk::ReturnCode                 rc             = kvk::createShaderModuleFromFile(computeModule,
-                                                                                         device,
-                                                                                         computePath.c_str());
+        const std::string        computePath = std::string(shaderNames[SHADER_STAGE_COMPUTE].begin(), shaderNames[SHADER_STAGE_COMPUTE].end()) + std::string(".compute.spv");
+        vector<std::uint32_t>    computeSpirv;
+        VkShaderModuleCreateInfo computeModuleCreateInfo;
+        kvk::ReturnCode          rc = readShaderFile(computeSpirv,
+                                                     computePath.c_str());
+        if(rc != kvk::ReturnCode::OK) {
+            logError("Could not create shader module from %s: %d", computePath.c_str(), rc);
+            return rc;
+        }
+
+        computeModuleCreateInfo = {
+            .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+            .codeSize = computeSpirv.size() * 4,
+            .pCode    = computeSpirv.data()
+        };
 
         VkPipelineShaderStageCreateInfo shaderStages[] = {
             {
                 .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                .pNext  = &computeModuleCreateInfo,
                 .stage  = VK_SHADER_STAGE_COMPUTE_BIT,
-                .module = computeModule,
-                .pName  = entryPointNames[SHADER_STAGE_COMPUTE].data(),
+                .module = VK_NULL_HANDLE,
+                .pName  = "main",
             },
         };
 
@@ -1428,7 +1495,7 @@ namespace kvk {
                                                                  format,
                                                                  usageFlags,
                                                                  extent,
-                                                      isCubemap ? 6 : 1,
+                                                                 isCubemap ? 6 : 1,
                                                                  mipLevels);
 
         VmaAllocationCreateInfo imageAllocInfo = {
@@ -1448,12 +1515,20 @@ namespace kvk {
 
         VkImageAspectFlags aspect;
         switch(format) {
-        case VK_FORMAT_D24_UNORM_S8_UINT: {
+        case VK_FORMAT_D32_SFLOAT_S8_UINT:
+        case VK_FORMAT_D24_UNORM_S8_UINT:
+        case VK_FORMAT_D16_UNORM_S8_UINT: {
             aspect = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
         } break;
 
+        case VK_FORMAT_D16_UNORM:
+        case VK_FORMAT_X8_D24_UNORM_PACK32:
         case VK_FORMAT_D32_SFLOAT: {
             aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
+        } break;
+
+        case VK_FORMAT_S8_UINT: {
+            aspect = VK_IMAGE_ASPECT_STENCIL_BIT;
         } break;
 
         default: {
@@ -1466,9 +1541,11 @@ namespace kvk {
             logError("Could not create draw image");
             return ReturnCode::UNKNOWN;
         }
-        image.format = format;
-        image.extent = extent;
-        image.usage  = usageFlags;
+        image.format     = format;
+        image.extent     = extent;
+        image.usage      = usageFlags;
+        image.layerCount = 1;
+        image.mipCount   = 1;
         return ReturnCode::OK;
     }
 
@@ -1526,10 +1603,10 @@ namespace kvk {
                 .bufferImageHeight = 0,
 
                 .imageSubresource  = {
-                     .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-                     .mipLevel       = 0,
-                     .baseArrayLayer = 0,
-                     .layerCount     = 1,
+                    .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .mipLevel       = 0,
+                    .baseArrayLayer = 0,
+                    .layerCount     = 1,
                 },
                 .imageExtent = extent,
             };
@@ -1681,10 +1758,10 @@ namespace kvk {
                 .bufferImageHeight = 0,
 
                 .imageSubresource  = {
-                     .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-                     .mipLevel       = 0,
-                     .baseArrayLayer = 0,
-                     .layerCount     = 6,
+                    .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .mipLevel       = 0,
+                    .baseArrayLayer = 0,
+                    .layerCount     = 6,
                 },
                 .imageExtent = {
                     .width  = extent.width,
@@ -1901,9 +1978,9 @@ namespace kvk {
                                        std::uint32_t       dstArrayElement) {
         KAMSKI_PROFILE();
         auto&                info  = bufferInfos.emplace_back(VkDescriptorBufferInfo{
-                            .buffer = buffer,
-                            .offset = offset,
-                            .range  = size });
+            .buffer = buffer,
+            .offset = offset,
+            .range  = size });
 
         VkWriteDescriptorSet write = {
             .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -1946,9 +2023,9 @@ namespace kvk {
                                       std::uint32_t    dstArrayElement) {
         KAMSKI_PROFILE();
         auto&                info  = imageInfos.emplace_back(VkDescriptorImageInfo{
-                            .sampler     = sampler,
-                            .imageView   = view,
-                            .imageLayout = layout,
+            .sampler     = sampler,
+            .imageView   = view,
+            .imageLayout = layout,
         });
 
         VkWriteDescriptorSet write = {
@@ -1980,6 +2057,9 @@ namespace kvk {
 
     void DescriptorWriter::updateSet(VkDevice device, VkDescriptorSet set) {
         KAMSKI_PROFILE();
+        if(writes.empty()) {
+            return;
+        }
         for(auto& write : writes) {
             write.dstSet = set;
         }
@@ -2035,7 +2115,7 @@ namespace kvk {
             return nullptr;
         } else if(result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
             logError("Something gone wrong: %d", result);
-            return nullptr;
+            assert(false);
         }
 
         //
@@ -2312,7 +2392,8 @@ namespace kvk {
 
     DescriptorSetBuilder& DescriptorSetBuilder::images(std::span<kvk::AllocatedImage> imagesToUpload, u32 offset, VkImageLayout layout) {
         descriptors[count].lastUploadedImageIndex = offset + imagesToUpload.size();
-        descriptors[count].type                   = Descriptor::IMAGES;
+        descriptors[count].type                   = Descriptor::IMAGE;
+        descriptors[count].imageCount             = imagesToUpload.size() + offset;
 
         imageInfoVector.resize(imagesToUpload.size());
         for(u32 i = 0; i != imagesToUpload.size(); i++) {
@@ -2360,7 +2441,19 @@ namespace kvk {
                 } break;
 
                 case kvk::Descriptor::IMAGE: {
-                    builder.addBinding(i, set.descriptors[i].imageType);
+                    const std::uint32_t imageCount = set.descriptors[i].imageCount;
+                    if(imageCount == 1) {
+                        builder.addBinding(i, set.descriptors[i].imageType);
+                    } else if(imageCount == std::numeric_limits<u16>::max()) {
+                        builder.addBinding(i,
+                                           set.descriptors[i].imageType,
+                                           std::numeric_limits<u16>::max(),
+                                           VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT);
+                    } else {
+                        builder.addBinding(i,
+                                           set.descriptors[i].imageType,
+                                           imageCount);
+                    }
                 } break;
 
                 case kvk::Descriptor::SAMPLER: {
@@ -2369,13 +2462,6 @@ namespace kvk {
 
                 case kvk::Descriptor::BUFFER: {
                     builder.addBinding(i, set.descriptors[i].bufferType);
-                } break;
-
-                case kvk::Descriptor::IMAGES: {
-                    builder.addBinding(i,
-                                       VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-                                       std::numeric_limits<u16>::max(),
-                                       VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT);
                 } break;
 
                 case kvk::Descriptor::NONE: {
@@ -2426,7 +2512,7 @@ namespace kvk {
                                                                         false,
                                                                         name);
             ReturnCode            rc;
-            if(descriptors[count - 1].type == Descriptor::IMAGES) {
+            if(descriptors[count - 1].type == Descriptor::IMAGE && descriptors[count - 1].imageCount == std::numeric_limits<u16>::max()) {
                 const u32                                          descriptorCount      = std::numeric_limits<u16>::max();
                 VkDescriptorSetVariableDescriptorCountAllocateInfo setAllocateCountInfo = {
                     .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO,
@@ -2462,7 +2548,11 @@ namespace kvk {
                 } break;
 
                 case kvk::Descriptor::IMAGE: {
-                    shouldRemove = descriptors[i].image == set.descriptors[i].image;
+                    if(descriptors[i].imageCount == 1) {
+                        shouldRemove = descriptors[i].image == set.descriptors[i].image;
+                    } else {
+                        shouldRemove = writer.writes.back().descriptorCount == 0;
+                    }
                 } break;
 
                 case kvk::Descriptor::SAMPLER: {
@@ -2471,10 +2561,6 @@ namespace kvk {
 
                 case kvk::Descriptor::BUFFER: {
                     shouldRemove = descriptors[i].buffer == set.descriptors[i].buffer;
-                } break;
-
-                case kvk::Descriptor::IMAGES: {
-                    shouldRemove = writer.writes.back().descriptorCount == 0;
                 } break;
 
                 case kvk::Descriptor::NONE: {
@@ -2539,13 +2625,13 @@ namespace kvk {
                                                              VkImageLayout       imageLayout) {
         VkRenderingAttachmentInfo& colorAttachment = colorAttachments.emplace_back();
         colorAttachment                            = VkRenderingAttachmentInfo{
-                                       .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                                       .imageView   = view,
-                                       .imageLayout = imageLayout,
-                                       .loadOp      = loadOp,
-                                       .storeOp     = storeOp,
-                                       .clearValue  = {
-                                            .color = {
+            .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView   = view,
+            .imageLayout = imageLayout,
+            .loadOp      = loadOp,
+            .storeOp     = storeOp,
+            .clearValue  = {
+                .color = {
                     clearColor[0],
                     clearColor[1],
                     clearColor[2],
@@ -2563,14 +2649,14 @@ namespace kvk {
                                                              VkImageLayout       imageLayout) {
         VkRenderingAttachmentInfo& colorAttachment = colorAttachments.emplace_back();
         colorAttachment                            = VkRenderingAttachmentInfo{
-                                       .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                                       .imageView   = view,
-                                       .imageLayout = imageLayout,
-                                       .loadOp      = loadOp,
-                                       .storeOp     = storeOp,
-                                       .clearValue  = {
-                                            .color = {
-                                                .uint32 = {
+            .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView   = view,
+            .imageLayout = imageLayout,
+            .loadOp      = loadOp,
+            .storeOp     = storeOp,
+            .clearValue  = {
+                .color = {
+                    .uint32 = {
                         clearValues[0],
                         clearValues[1],
                         clearValues[2],
@@ -2596,9 +2682,9 @@ namespace kvk {
             .loadOp      = loadOp,
             .storeOp     = storeOp,
             .clearValue  = {
-                 .depthStencil = {
-                     .depth   = depthClear,
-                     .stencil = stencil,
+                .depthStencil = {
+                    .depth   = depthClear,
+                    .stencil = stencil,
                 },
             },
         };
@@ -2622,8 +2708,8 @@ namespace kvk {
             .loadOp      = loadOp,
             .storeOp     = storeOp,
             .clearValue  = {
-                 .depthStencil = {
-                     .stencil = stencil,
+                .depthStencil = {
+                    .stencil = stencil,
                 },
             },
         };

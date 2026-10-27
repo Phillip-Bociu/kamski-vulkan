@@ -430,6 +430,7 @@ namespace kvk {
             queueCreateInfos.push_back(queueCreateInfo);
         }
 
+
         VkPhysicalDeviceShaderMaximalReconvergenceFeaturesKHR maximalReconvergenceFeatures = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_MAXIMAL_RECONVERGENCE_FEATURES_KHR,
         };
@@ -452,6 +453,7 @@ namespace kvk {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
             .pNext = &features11,
         };
+
         VkPhysicalDeviceVulkan12Features features12 = {
             .sType                             = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
             .pNext                             = &features13,
@@ -508,6 +510,7 @@ namespace kvk {
         CHECK_FEATURE(features11, storageBuffer16BitAccess);
         CHECK_FEATURE(features11, uniformAndStorageBuffer16BitAccess);
         CHECK_FEATURE(features13, maintenance4);
+        CHECK_FEATURE(features14, maintenance5);
         CHECK_FEATURE(allDeviceFeatures.features, independentBlend);
         CHECK_FEATURE(allDeviceFeatures.features, samplerAnisotropy);
         CHECK_FEATURE(allDeviceFeatures.features, multiDrawIndirect);
@@ -535,7 +538,8 @@ namespace kvk {
         features14 = VkPhysicalDeviceVulkan14Features{
             .sType          = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
             .pNext          = &extendedDynamicState3Features,
-            .pushDescriptor = VK_TRUE,
+            .maintenance5   = VK_TRUE,
+            .pushDescriptor = VK_TRUE
         };
 
         features11 = VkPhysicalDeviceVulkan11Features{

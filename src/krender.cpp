@@ -1,4 +1,5 @@
 #include "vulkan/vulkan_core.h"
+#include <cstdio>
 #include <cstdint>
 #include <limits>
 #include <mutex>
@@ -8,6 +9,7 @@
 #include "common.h"
 #include "krender.h"
 #include "utils.h"
+#include "dynamic_state_features.h"
 
 #include <glm/gtx/transform.hpp>
 #include <glm/ext/matrix_transform.hpp>
@@ -115,6 +117,103 @@ namespace kvk {
         return ReturnCode::OK;
     }
 
+    static void reportUnsupportedRequirement(const char* scope, const char* kind, const char* name) {
+#ifdef KAMSKI_DEBUG
+        logError("[%s] Requested Vulkan %s is unsupported: %s", scope, kind, name);
+#else
+        std::fprintf(stderr, "[%s] Requested Vulkan %s is unsupported: %s\n", scope, kind, name);
+        std::fflush(stderr);
+#endif
+    }
+
+    static bool checkRequestedExtensions(std::span<const char* const>           requested,
+                                         std::span<const VkExtensionProperties> available,
+                                         const char*                            scope) {
+        bool supported = true;
+        for(const char* name : requested) {
+            if(std::none_of(available.begin(), available.end(), [&](const VkExtensionProperties& extension) {
+                   return std::strcmp(extension.extensionName, name) == 0;
+               })) {
+                reportUnsupportedRequirement(scope, "extension", name);
+                supported = false;
+            }
+        }
+        return supported;
+    }
+
+    static bool checkRequiredDeviceFeatures(VkPhysicalDevice                       physicalDevice,
+                                            std::span<const VkExtensionProperties> extensions,
+                                            const char*                            deviceName) {
+        auto hasExtension = [&](const char* name) {
+            return std::any_of(extensions.begin(), extensions.end(), [&](const VkExtensionProperties& extension) {
+                return std::strcmp(extension.extensionName, name) == 0;
+            });
+        };
+        VkPhysicalDeviceShaderMaximalReconvergenceFeaturesKHR maximalReconvergence = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_MAXIMAL_RECONVERGENCE_FEATURES_KHR,
+        };
+        void*                                            extensionFeatures = hasExtension(VK_KHR_SHADER_MAXIMAL_RECONVERGENCE_EXTENSION_NAME) ? &maximalReconvergence : nullptr;
+        VkPhysicalDeviceExtendedDynamicState3FeaturesEXT dynamic3          = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT,
+            .pNext = extensionFeatures,
+        };
+        if(hasExtension(VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME)) {
+            extensionFeatures = &dynamic3;
+        }
+        VkPhysicalDeviceVulkan14Features features14 = { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES, .pNext = extensionFeatures };
+        VkPhysicalDeviceVulkan13Features features13 = { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES, .pNext = &features14 };
+        VkPhysicalDeviceVulkan12Features features12 = { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES, .pNext = &features13 };
+        VkPhysicalDeviceVulkan11Features features11 = { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES, .pNext = &features12 };
+        VkPhysicalDeviceFeatures2        features   = { .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, .pNext = &features11 };
+        vkGetPhysicalDeviceFeatures2(physicalDevice, &features);
+
+        bool supported = true;
+#define CHECK_FEATURE(revision, feature)                                   \
+    do {                                                                   \
+        if(!revision.feature) {                                            \
+            reportUnsupportedRequirement(deviceName, "feature", #feature); \
+            supported = false;                                             \
+        }                                                                  \
+    } while(false)
+
+        CHECK_FEATURE(maximalReconvergence, shaderMaximalReconvergence);
+        CHECK_FEATURE(dynamic3, extendedDynamicState3PolygonMode);
+        CHECK_FEATURE(features14, pushDescriptor);
+        CHECK_FEATURE(features13, synchronization2);
+        CHECK_FEATURE(features13, dynamicRendering);
+        CHECK_FEATURE(features13, shaderDemoteToHelperInvocation);
+        CHECK_FEATURE(features12, bufferDeviceAddress);
+        CHECK_FEATURE(features12, samplerFilterMinmax);
+        CHECK_FEATURE(features12, runtimeDescriptorArray);
+        CHECK_FEATURE(features12, storageBuffer8BitAccess);
+        CHECK_FEATURE(features12, uniformAndStorageBuffer8BitAccess);
+        CHECK_FEATURE(features12, shaderInt8);
+        CHECK_FEATURE(features12, descriptorBindingPartiallyBound);
+        CHECK_FEATURE(features12, descriptorBindingVariableDescriptorCount);
+        CHECK_FEATURE(features12, shaderSampledImageArrayNonUniformIndexing);
+        CHECK_FEATURE(features12, shaderBufferInt64Atomics);
+        CHECK_FEATURE(features12, shaderFloat16);
+        CHECK_FEATURE(features12, drawIndirectCount);
+        CHECK_FEATURE(features11, shaderDrawParameters);
+        CHECK_FEATURE(features11, storageBuffer16BitAccess);
+        CHECK_FEATURE(features11, uniformAndStorageBuffer16BitAccess);
+        CHECK_FEATURE(features13, maintenance4);
+        CHECK_FEATURE(features14, maintenance5);
+        CHECK_FEATURE(features.features, independentBlend);
+        CHECK_FEATURE(features.features, samplerAnisotropy);
+        CHECK_FEATURE(features.features, multiDrawIndirect);
+        CHECK_FEATURE(features.features, drawIndirectFirstInstance);
+        CHECK_FEATURE(features.features, shaderClipDistance);
+        CHECK_FEATURE(features.features, shaderCullDistance);
+        CHECK_FEATURE(features.features, fragmentStoresAndAtomics);
+        CHECK_FEATURE(features.features, shaderInt16);
+        CHECK_FEATURE(features.features, shaderInt64);
+        CHECK_FEATURE(features.features, fillModeNonSolid);
+        CHECK_FEATURE(features.features, sparseBinding);
+#undef CHECK_FEATURE
+        return supported;
+    }
+
     ReturnCode init(RendererState& state, const InitSettings* settings) {
         KAMSKI_PROFILE();
         /*===========================
@@ -150,18 +249,22 @@ namespace kvk {
         std::vector<VkLayerProperties> layerProps(layerCount);
         vkEnumerateInstanceLayerProperties(&layerCount, layerProps.data());
 
+        bool                     layersSupported = true;
+        std::vector<const char*> supportedLayers;
         for(const char* d : desiredLayers) {
             bool found = false;
             for(const VkLayerProperties& prop : layerProps) {
                 if(strcmp(prop.layerName, d) == 0) {
                     logDebug("found %s", d);
                     found = true;
+                    supportedLayers.push_back(d);
                     break;
                 }
             }
 
             if(!found) {
-                return ReturnCode::LAYER_NOT_FOUND;
+                reportUnsupportedRequirement("instance", "layer", d);
+                layersSupported = false;
             }
         }
 #else
@@ -189,6 +292,33 @@ namespace kvk {
         const char**  glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
         extensions.insert(extensions.end(), glfwExtensions, glfwExtensions + glfwExtensionCount);
 #endif
+
+        std::uint32_t instanceExtensionCount = 0;
+        VK_CHECK(vkEnumerateInstanceExtensionProperties(nullptr, &instanceExtensionCount, nullptr));
+        std::vector<VkExtensionProperties> instanceExtensions(instanceExtensionCount);
+        VK_CHECK(vkEnumerateInstanceExtensionProperties(nullptr, &instanceExtensionCount, instanceExtensions.data()));
+#ifdef KAMSKI_DEBUG
+        // Explicit layers can provide requested extensions that are absent from the global list.
+        for(const char* layer : supportedLayers) {
+            std::uint32_t count = 0;
+            VK_CHECK(vkEnumerateInstanceExtensionProperties(layer, &count, nullptr));
+            if(count != 0) {
+                const auto offset = instanceExtensions.size();
+                instanceExtensions.resize(offset + count);
+                VK_CHECK(vkEnumerateInstanceExtensionProperties(layer, &count, instanceExtensions.data() + offset));
+                instanceExtensions.resize(offset + count);
+            }
+        }
+#endif
+        const bool instanceExtensionsSupported = checkRequestedExtensions(extensions, instanceExtensions, "instance");
+#ifdef KAMSKI_DEBUG
+        if(!layersSupported) {
+            return ReturnCode::LAYER_NOT_FOUND;
+        }
+#endif
+        if(!instanceExtensionsSupported) {
+            return ReturnCode::UNKNOWN;
+        }
 
         VkInstanceCreateInfo instanceCreateInfo = {
             .sType            = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
@@ -292,17 +422,9 @@ namespace kvk {
                 std::vector<VkExtensionProperties> deviceExtensions(extensionCount);
                 vkEnumerateDeviceExtensionProperties(pd, nullptr, &extensionCount, deviceExtensions.data());
 
-                extensionCount = 0;
-                for(const char* de : desiredDeviceExtensions) {
-                    for(const VkExtensionProperties& ext : deviceExtensions) {
-                        if(strcmp(ext.extensionName, de) == 0) {
-                            logInfo("Found device extension: %s", de);
-                            extensionCount++;
-                            break;
-                        }
-                    }
-                }
-                if(extensionCount != sizeof(desiredDeviceExtensions) / sizeof(desiredDeviceExtensions[0])) {
+                const bool extensionsSupported = checkRequestedExtensions(desiredDeviceExtensions, deviceExtensions, prop2.properties.deviceName);
+                const bool featuresSupported   = checkRequiredDeviceFeatures(pd, deviceExtensions, prop2.properties.deviceName);
+                if(!extensionsSupported || !featuresSupported) {
                     continue;
                 }
 
@@ -434,13 +556,14 @@ namespace kvk {
         VkPhysicalDeviceShaderMaximalReconvergenceFeaturesKHR maximalReconvergenceFeatures = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_MAXIMAL_RECONVERGENCE_FEATURES_KHR,
         };
-        VkPhysicalDeviceExtendedDynamicState3FeaturesEXT extendedDynamicState3Features = {
-            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT,
-            .pNext = &maximalReconvergenceFeatures
-        };
+        std::uint32_t deviceExtensionCount = 0;
+        VK_CHECK(vkEnumerateDeviceExtensionProperties(state.physicalDevice, nullptr, &deviceExtensionCount, nullptr));
+        std::vector<VkExtensionProperties> availableDeviceExtensions(deviceExtensionCount);
+        VK_CHECK(vkEnumerateDeviceExtensionProperties(state.physicalDevice, nullptr, &deviceExtensionCount, availableDeviceExtensions.data()));
+        DynamicStateFeatures             dynamicStateFeatures(availableDeviceExtensions, desiredDeviceExtensions, &maximalReconvergenceFeatures);
         VkPhysicalDeviceVulkan14Features features14 = {
             .sType          = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
-            .pNext          = &extendedDynamicState3Features,
+            .pNext          = dynamicStateFeatures.chain,
             .pushDescriptor = VK_TRUE,
         };
         VkPhysicalDeviceVulkan11Features features11 = {
@@ -483,62 +606,18 @@ namespace kvk {
         vkGetPhysicalDeviceFeatures2(state.physicalDevice,
                                      &allDeviceFeatures);
 
-#define CHECK_FEATURE(revision, feature)       \
-    if(!revision.feature) {                    \
-        logInfo(#feature " is not available"); \
-        return ReturnCode::UNKNOWN;            \
-    }
-
-        CHECK_FEATURE(maximalReconvergenceFeatures, shaderMaximalReconvergence);
-        CHECK_FEATURE(extendedDynamicState3Features, extendedDynamicState3PolygonMode);
-        CHECK_FEATURE(features14, pushDescriptor);
-        CHECK_FEATURE(features13, synchronization2);
-        CHECK_FEATURE(features13, dynamicRendering);
-        CHECK_FEATURE(features13, shaderDemoteToHelperInvocation);
-        CHECK_FEATURE(features12, bufferDeviceAddress);
-        CHECK_FEATURE(features12, samplerFilterMinmax);
-        CHECK_FEATURE(features12, runtimeDescriptorArray);
-        CHECK_FEATURE(features12, storageBuffer8BitAccess);
-        CHECK_FEATURE(features12, uniformAndStorageBuffer8BitAccess);
-        CHECK_FEATURE(features12, shaderInt8);
-        CHECK_FEATURE(features12, descriptorBindingPartiallyBound);
-        CHECK_FEATURE(features12, descriptorBindingVariableDescriptorCount);
-        CHECK_FEATURE(features12, shaderSampledImageArrayNonUniformIndexing);
-        CHECK_FEATURE(features12, shaderBufferInt64Atomics);
-        CHECK_FEATURE(features12, shaderFloat16);
-        CHECK_FEATURE(features12, drawIndirectCount);
-        CHECK_FEATURE(features11, shaderDrawParameters);
-        CHECK_FEATURE(features11, storageBuffer16BitAccess);
-        CHECK_FEATURE(features11, uniformAndStorageBuffer16BitAccess);
-        CHECK_FEATURE(features13, maintenance4);
-        CHECK_FEATURE(features14, maintenance5);
-        CHECK_FEATURE(allDeviceFeatures.features, independentBlend);
-        CHECK_FEATURE(allDeviceFeatures.features, samplerAnisotropy);
-        CHECK_FEATURE(allDeviceFeatures.features, multiDrawIndirect);
-        CHECK_FEATURE(allDeviceFeatures.features, drawIndirectFirstInstance);
-        CHECK_FEATURE(allDeviceFeatures.features, shaderClipDistance);
-        CHECK_FEATURE(allDeviceFeatures.features, shaderCullDistance);
-        CHECK_FEATURE(allDeviceFeatures.features, fragmentStoresAndAtomics);
-        CHECK_FEATURE(allDeviceFeatures.features, shaderInt16);
-        CHECK_FEATURE(allDeviceFeatures.features, shaderInt64);
-        CHECK_FEATURE(allDeviceFeatures.features, fillModeNonSolid);
-        CHECK_FEATURE(allDeviceFeatures.features, sparseBinding);
-
-#undef CHECK_FEATURE
+        const VkPhysicalDeviceFeatures         supportedCoreFeatures = allDeviceFeatures.features;
+        const VkPhysicalDeviceVulkan14Features supported14Features   = features14;
+        dynamicStateFeatures.filter();
 
         maximalReconvergenceFeatures = VkPhysicalDeviceShaderMaximalReconvergenceFeaturesKHR{
             .sType                      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_MAXIMAL_RECONVERGENCE_FEATURES_KHR,
             .shaderMaximalReconvergence = VK_TRUE
         };
 
-        extendedDynamicState3Features = VkPhysicalDeviceExtendedDynamicState3FeaturesEXT{
-            .sType                            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT,
-            .extendedDynamicState3PolygonMode = VK_TRUE,
-        };
-
         features14 = VkPhysicalDeviceVulkan14Features{
             .sType          = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
-            .pNext          = &extendedDynamicState3Features,
+            .pNext          = dynamicStateFeatures.chain,
             .maintenance5   = VK_TRUE,
             .pushDescriptor = VK_TRUE
         };
@@ -595,13 +674,19 @@ namespace kvk {
             },
         };
 
+        DynamicStateFeatures::enableCoreFeatures(allDeviceFeatures.features, supportedCoreFeatures);
+        DynamicStateFeatures::enableVulkan14Features(features14, supported14Features);
+        for(const char* extension : dynamicStateFeatures.extensions) {
+            logInfo("Enabling device extension: %s", extension);
+        }
+
         VkDeviceCreateInfo deviceCreateInfo = {
             .sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
             .pNext                   = &allDeviceFeatures,
             .queueCreateInfoCount    = static_cast<std::uint32_t>(queueCreateInfos.size()),
             .pQueueCreateInfos       = queueCreateInfos.data(),
-            .enabledExtensionCount   = sizeof(desiredDeviceExtensions) / sizeof(desiredDeviceExtensions[0]),
-            .ppEnabledExtensionNames = desiredDeviceExtensions,
+            .enabledExtensionCount   = static_cast<std::uint32_t>(dynamicStateFeatures.extensions.size()),
+            .ppEnabledExtensionNames = dynamicStateFeatures.extensions.data(),
         };
 
         if(vkCreateDevice(state.physicalDevice, &deviceCreateInfo, nullptr, &state.device) != VK_SUCCESS) {

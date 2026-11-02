@@ -494,6 +494,7 @@ namespace kvk {
         CHECK_FEATURE(features14, pushDescriptor);
         CHECK_FEATURE(features13, synchronization2);
         CHECK_FEATURE(features13, dynamicRendering);
+        CHECK_FEATURE(features13, shaderDemoteToHelperInvocation);
         CHECK_FEATURE(features12, bufferDeviceAddress);
         CHECK_FEATURE(features12, samplerFilterMinmax);
         CHECK_FEATURE(features12, runtimeDescriptorArray);
@@ -551,11 +552,12 @@ namespace kvk {
         };
 
         features13 = VkPhysicalDeviceVulkan13Features{
-            .sType            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-            .pNext            = &features11,
-            .synchronization2 = VK_TRUE,
-            .dynamicRendering = VK_TRUE,
-            .maintenance4     = VK_TRUE
+            .sType                          = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+            .pNext                          = &features11,
+            .shaderDemoteToHelperInvocation = VK_TRUE,
+            .synchronization2               = VK_TRUE,
+            .dynamicRendering               = VK_TRUE,
+            .maintenance4                   = VK_TRUE,
         };
 
         features12 = VkPhysicalDeviceVulkan12Features{

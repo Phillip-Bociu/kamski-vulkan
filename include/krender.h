@@ -17,6 +17,7 @@
 #include <deque>
 #include <functional>
 #include <array>
+#include <unordered_map>
 
 #include <vulkan/vulkan.h>
 #include <vk_mem_alloc.h>
@@ -474,6 +475,8 @@ namespace kvk {
         VkPipelineLayout                       pipelineLayout;
         VkPipelineViewportStateCreateInfo      viewportState;
         VkPipelineColorBlendAttachmentState    colorBlendAttachment;
+        // -1 supplies the default for all targets; nonnegative keys override individual targets.
+        std::unordered_map<int, VkPipelineColorBlendAttachmentState> colorBlendAttachments;
         VkPipelineColorBlendStateCreateInfo    blendState;
         VkPipelineVertexInputStateCreateInfo   inputState;
         VkPipelineDynamicStateCreateInfo       dynamicStateInfo;
@@ -508,6 +511,7 @@ namespace kvk {
         PipelineBuilder&                       enableStencilTest(const VkStencilOpState& front, const VkStencilOpState& back);
         PipelineBuilder&                       enableBlendingAdditive();
         PipelineBuilder&                       enableBlendingAlpha();
+        PipelineBuilder&                       setColorBlendAttachment(int target, const VkPipelineColorBlendAttachmentState& attachment);
 
         PipelineBuilder&                       disableBlending();
 

@@ -1101,6 +1101,12 @@ namespace kvk {
         return *this;
     }
 
+    PipelineBuilder& PipelineBuilder::setColorBlendAttachment(int target, const VkPipelineColorBlendAttachmentState& attachment) {
+        kassert(target >= -1);
+        colorBlendAttachments[target] = attachment;
+        return *this;
+    }
+
     PipelineBuilder& PipelineBuilder::enableBlendingAdditive() {
         colorBlendAttachment.colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
         colorBlendAttachment.blendEnable         = VK_TRUE;
@@ -1365,9 +1371,16 @@ namespace kvk {
             .blendEnable    = VK_FALSE,
             .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
         };
-        std::vector<VkPipelineColorBlendAttachmentState> attachments(colorAttachmentFormats.size(), defaultBlendAttachment);
-        if(colorAttachmentFormats.size() != 0) {
+        const auto allTargets = colorBlendAttachments.find(-1);
+        std::vector<VkPipelineColorBlendAttachmentState> attachments(colorAttachmentFormats.size(),
+            allTargets != colorBlendAttachments.end() ? allTargets->second : defaultBlendAttachment);
+        if(!attachments.empty() && allTargets == colorBlendAttachments.end()) {
             attachments[0] = colorBlendAttachment;
+        }
+        for(std::size_t index = 0; index != attachments.size(); index++) {
+            if(const auto it = colorBlendAttachments.find(static_cast<int>(index)); it != colorBlendAttachments.end()) {
+                attachments[index] = it->second;
+            }
         }
 
         blendState.attachmentCount = attachments.size();
